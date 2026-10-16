@@ -1,0 +1,25 @@
+﻿@inherits LayoutComponentBase
+
+<div class="shell">
+    <nav class="sidebar">
+        <div class="brand"><span class="dot up"></span> NMS</div>
+        <NavLink href="" Match="NavLinkMatch.All">Dashboard</NavLink>
+        <NavLink href="sites">Sites</NavLink>
+        <NavLink href="incidents">Incidents</NavLink>
+        <AuthorizeView Roles="Nms.Admin">
+            <NavLink href="settings">Settings</NavLink>
+        </AuthorizeView>
+        <div class="spacer"></div>
+        <AuthorizeView>
+            <div class="user">@context.User.Identity?.Name</div>
+        </AuthorizeView>
+    </nav>
+    <main class="content">
+        <ErrorBoundary>
+            <ChildContent>@Body</ChildContent>
+            <ErrorContent Context="ex">
+                <div class="card error"><h2>Something went wrong</h2><pre>@ex.Message</pre></div>
+            </ErrorContent>
+        </ErrorBoundary>
+    </main>
+</div>

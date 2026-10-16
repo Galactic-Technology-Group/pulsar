@@ -1,0 +1,42 @@
+[Unit]
+Description=Pulsar (Centralized NMS) site agent
+Documentation=https://github.com/Galactic-Technology-Group/pulsar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=nms-agent
+Group=nms-agent
+ExecStart=/opt/nms-agent/nms-agent
+WorkingDirectory=/opt/nms-agent
+Environment=DOTNET_gcServer=0
+Environment=DOTNET_GCHeapHardLimit=0x10000000
+EnvironmentFile=-/etc/nms-agent/environment
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGINT
+
+# Raw ICMP sockets without root
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=true
+
+# Hardening: only the state directory is writable (outbox, credentials). Self-update writes
+# /opt/nms-agent, hence it is listed too.
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/nms-agent /opt/nms-agent
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK AF_PACKET
+
+[Install]
+WantedBy=multi-user.target

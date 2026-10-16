@@ -1,0 +1,15 @@
+@* Small coloured pill for a CheckState or AgentStatus. *@
+<span class="badge @Css" title="@Title">@Text</span>
+
+@code {
+    [Parameter] public CheckState? State { get; set; }
+    [Parameter] public AgentStatus? Agent { get; set; }
+    [Parameter] public string? Title { get; set; }
+
+    private string Css => State switch
+    {
+        CheckState.Up => "up", CheckState.Down => "down", CheckState.Degraded => "degraded", CheckState.Unknown => "unknown",
+        _ => Agent switch { AgentStatus.Online => "up", AgentStatus.Offline => "down", AgentStatus.Revoked => "down", _ => "unknown" }
+    };
+    private string Text => State?.ToString() ?? Agent?.ToString() ?? "?";
+}

@@ -1,0 +1,13 @@
+* text=auto eol=lf
+*.sh text eol=lf
+*.service text eol=lf
+*.cs text eol=lf
+*.razor text eol=lf
+*.bicep text eol=lf
+*.bicepparam text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.csproj text eol=lf
+*.sln text eol=crlf
+*.png binary

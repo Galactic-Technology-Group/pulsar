@@ -1,0 +1,146 @@
+@page "/devices/{DeviceId:guid}"
+@inject NmsApiClient Api
+@inject LiveUpdates Live
+@implements IDisposable
+
+@if (device is null) { <p class="muted">Loading…</p> }
+else
+{
+    <PageTitle>@device.Name</PageTitle>
+    <h1>@device.Name <small class="muted">@device.Address @(device.VlanId is null ? "" : $"· VLAN {device.VlanId}")</small></h1>
+    <p><a href="sites/@device.SiteId">← back to site</a></p>
+
+    <section class="card">
+        <h3>Checks</h3>
+        <table class="grid">
+            <thead><tr><th>Type</th><th>Target</th><th>State</th><th>Latency</th><th>Interval</th><th>Threshold</th><th>Last result</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var c in device.Checks)
+            {
+                <tr class="@(selected?.Id == c.Id ? "selected" : "")" @onclick="() => Select(c)">
+                    <td>@c.Type</td>
+                    <td>@(c.Type == CheckType.Icmp ? "-" : $"{c.Port}{c.HttpPath}")</td>
+                    <td><StateBadge State="c.State" /></td>
+                    <td>@(c.LastLatencyMs is null ? "-" : c.LastLatencyMs + " ms")</td>
+                    <td>@c.IntervalSec s</td>
+                    <td>@c.FailureThreshold</td>
+                    <td>@c.LastResultUtc?.ToLocalTime().ToString("g")</td>
+                    <td class="actions">
+                        <AuthorizeView Roles="Nms.Admin,Nms.Operator">
+                            <button class="small" @onclick="() => Api.RunCheckAsync(c.Id)" @onclick:stopPropagation>Run now</button>
+                            <button class="small" @onclick="() => Toggle(c)" @onclick:stopPropagation>@(c.Enabled ? "Disable" : "Enable")</button>
+                            <button class="danger small" @onclick="() => DeleteCheck(c.Id)" @onclick:stopPropagation>Delete</button>
+                        </AuthorizeView>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+
+        <AuthorizeView Roles="Nms.Admin,Nms.Operator">
+            <div class="form-row">
+                <select @bind="form.Type">
+                    <option value="@CheckType.Icmp">ICMP ping</option>
+                    <option value="@CheckType.TcpPort">TCP port</option>
+                    <option value="@CheckType.Http">HTTP(S)</option>
+                </select>
+                @if (form.Type != CheckType.Icmp) { <input type="number" placeholder="port" @bind="form.Port" style="width:6em" /> }
+                @if (form.Type == CheckType.Http)
+                {
+                    <input placeholder="/path" @bind="form.HttpPath" />
+                    <input type="number" placeholder="expected status" @bind="form.ExpectedHttpStatus" style="width:9em" />
+                    <input placeholder="body regex (optional)" @bind="form.BodyRegex" />
+                }
+                <label>every <input type="number" @bind="form.IntervalSec" style="width:5em" /> s</label>
+                <label>timeout <input type="number" @bind="form.TimeoutMs" style="width:6em" /> ms</label>
+                <label>down after <input type="number" @bind="form.FailureThreshold" style="width:4em" /> failures</label>
+                <button class="primary" @onclick="AddCheck">Add check</button>
+            </div>
+            @if (error is not null) { <p class="error">@error</p> }
+        </AuthorizeView>
+    </section>
+
+    @if (selected is not null)
+    {
+        <section class="card">
+            <h3>@selected.Type history
+                <span class="range">
+                    <button class="small @(hours == 1 ? "active" : "")" @onclick="() => SetRange(1)">1 h</button>
+                    <button class="small @(hours == 24 ? "active" : "")" @onclick="() => SetRange(24)">24 h</button>
+                    <button class="small @(hours == 168 ? "active" : "")" @onclick="() => SetRange(168)">7 d</button>
+                </span>
+            </h3>
+            <LatencyChart Points="history" />
+            @if (history.Count > 0)
+            {
+                var samples = history.Sum(h => h.Samples); var ok = history.Sum(h => h.OkSamples);
+                <p class="small">Availability @((samples == 0 ? 0 : 100.0 * ok / samples).ToString("F2"))% over @samples samples · avg @(history.Where(h => h.AvgLatencyMs != null).DefaultIfEmpty().Average(h => h?.AvgLatencyMs ?? 0).ToString("F0")) ms</p>
+            }
+            <h4>Recent results</h4>
+            <table class="grid small">
+                <thead><tr><th>Time</th><th>OK</th><th>Latency</th><th>Detail</th></tr></thead>
+                <tbody>@foreach (var r in recent) { <tr><td>@r.Time.ToLocalTime().ToString("G")</td><td>@(r.Ok ? "✓" : "✗")</td><td>@r.LatencyMs</td><td>@r.Detail</td></tr> }</tbody>
+            </table>
+        </section>
+    }
+}
+
+@code {
+    [Parameter] public Guid DeviceId { get; set; }
+    private Device? device;
+    private Check? selected;
+    private List<LatencyPoint> history = new();
+    private List<CheckResult> recent = new();
+    private int hours = 24;
+    private CheckForm form = new();
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+        if (device?.Checks.FirstOrDefault() is { } first) await Select(first);
+        await Live.EnsureConnectedAsync(device?.SiteId);
+        Live.Changed += OnChanged;
+    }
+
+    private async Task Load() => device = await Api.GetDeviceAsync(DeviceId);
+    private async Task OnChanged()
+    {
+        await Load();
+        if (selected is not null) await LoadHistory();
+        await InvokeAsync(StateHasChanged);
+    }
+    public void Dispose() => Live.Changed -= OnChanged;
+
+    private async Task Select(Check c) { selected = c; await LoadHistory(); }
+    private async Task SetRange(int h) { hours = h; await LoadHistory(); }
+    private async Task LoadHistory()
+    {
+        if (selected is null) return;
+        history = await Api.GetHistoryAsync(selected.Id, DateTimeOffset.UtcNow.AddHours(-hours), DateTimeOffset.UtcNow);
+        recent = await Api.GetRecentResultsAsync(selected.Id, 30);
+    }
+
+    private async Task AddCheck()
+    {
+        error = null;
+        try
+        {
+            await Api.CreateCheckAsync(DeviceId, new CheckInput(form.Type, form.Port, form.HttpPath, form.ExpectedHttpStatus, form.BodyRegex, form.IntervalSec, form.TimeoutMs, form.FailureThreshold));
+            form = new(); await Load();
+        }
+        catch (ApiException ex) { error = ex.Message; }
+    }
+    private async Task Toggle(Check c)
+    {
+        await Api.UpdateCheckAsync(c.Id, new CheckInput(c.Type, c.Port, c.HttpPath, c.ExpectedHttpStatus, c.BodyRegex, c.IntervalSec, c.TimeoutMs, c.FailureThreshold, !c.Enabled));
+        await Load();
+    }
+    private async Task DeleteCheck(Guid id) { await Api.DeleteCheckAsync(id); if (selected?.Id == id) selected = null; await Load(); }
+
+    private sealed class CheckForm
+    {
+        public CheckType Type { get; set; } = CheckType.TcpPort; public int? Port { get; set; } public string? HttpPath { get; set; } public int? ExpectedHttpStatus { get; set; }
+        public string? BodyRegex { get; set; } public int IntervalSec { get; set; } = 60; public int TimeoutMs { get; set; } = 2000; public int FailureThreshold { get; set; } = 3;
+    }
+}

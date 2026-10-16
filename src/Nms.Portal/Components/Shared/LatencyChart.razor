@@ -1,0 +1,35 @@
+@* Inline SVG latency/availability chart from 5-minute buckets. No JS dependency. *@
+@if (Points.Count == 0)
+{
+    <div class="muted">No data for this period.</div>
+}
+else
+{
+    <svg viewBox="0 0 @W @H" class="chart" preserveAspectRatio="none" role="img" aria-label="Latency over time">
+        <line x1="@Pad" y1="@(H - Pad)" x2="@(W - Pad)" y2="@(H - Pad)" class="axis" />
+        <line x1="@Pad" y1="@Pad" x2="@Pad" y2="@(H - Pad)" class="axis" />
+        @foreach (var (p, i) in Points.Select((p, i) => (p, i)))
+        {
+            var x = X(i);
+            var avail = p.Samples == 0 ? 1.0 : (double)p.OkSamples / p.Samples;
+            if (avail < 1.0)
+            {
+                <rect x="@(x - BarW / 2)" y="@Pad" width="@BarW" height="@(H - 2 * Pad)" class="@(avail == 0 ? "down-band" : "degraded-band")" />
+            }
+        }
+        <polyline points="@Line" class="line" />
+        <text x="@Pad" y="@(Pad - 4)" class="label">@Max ms</text>
+        <text x="@Pad" y="@(H - 2)" class="label">@Points[0].Bucket.ToLocalTime().ToString("HH:mm")</text>
+        <text x="@(W - Pad)" y="@(H - 2)" class="label" text-anchor="end">@Points[^1].Bucket.ToLocalTime().ToString("HH:mm")</text>
+    </svg>
+}
+
+@code {
+    [Parameter] public List<LatencyPoint> Points { get; set; } = new();
+    const int W = 800, H = 180, Pad = 24;
+    double BarW => Points.Count <= 1 ? 4 : Math.Max(1.0, (W - 2.0 * Pad) / Points.Count);
+    int Max => Math.Max(1, (int)Math.Ceiling(Points.Max(p => p.MaxLatencyMs ?? p.AvgLatencyMs ?? 0) / 10.0) * 10);
+    double X(int i) => Points.Count <= 1 ? W / 2.0 : Pad + i * (W - 2.0 * Pad) / (Points.Count - 1);
+    double Y(double? ms) => ms is null ? H - Pad : (H - Pad) - (ms.Value / Max) * (H - 2 * Pad);
+    string Line => string.Join(" ", Points.Select((p, i) => $"{X(i):F1},{Y(p.AvgLatencyMs):F1}"));
+}

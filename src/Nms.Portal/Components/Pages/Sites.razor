@@ -1,0 +1,67 @@
+@page "/sites"
+@inject NmsApiClient Api
+
+<PageTitle>Sites</PageTitle>
+<h1>Sites</h1>
+
+<AuthorizeView Roles="Nms.Admin,Nms.Operator" Context="auth">
+    <div class="card">
+        <h3>Add site</h3>
+        <EditForm Model="input" OnValidSubmit="Create" FormName="newsite">
+            <div class="form-row">
+                <label>Name <InputText @bind-Value="input.Name" /></label>
+                <label>Time zone <InputText @bind-Value="input.TimeZone" /></label>
+                <label>VLAN mode
+                    <InputSelect @bind-Value="input.VlanMode">
+                        <option value="@VlanMode.Routed">Routed (single IP, via gateway)</option>
+                        <option value="@VlanMode.Trunked">Trunked (802.1Q sub-interfaces)</option>
+                    </InputSelect>
+                </label>
+                <button type="submit" class="primary">Create</button>
+            </div>
+        </EditForm>
+        @if (error is not null) { <p class="error">@error</p> }
+    </div>
+</AuthorizeView>
+
+@if (sites is null) { <p class="muted">Loading…</p> }
+else
+{
+    <table class="grid">
+        <thead><tr><th>Name</th><th>Time zone</th><th>VLAN mode</th><th>Agents</th><th>Devices</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var s in sites)
+        {
+            <tr>
+                <td><a href="sites/@s.Id">@s.Name</a></td>
+                <td>@s.TimeZone</td>
+                <td>@s.VlanMode</td>
+                <td>@s.Agents.Count</td>
+                <td>@s.Devices.Count</td>
+                <td>
+                    <AuthorizeView Roles="Nms.Admin"><button class="danger small" @onclick="() => Delete(s.Id)">Delete</button></AuthorizeView>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Site>? sites;
+    private SiteForm input = new();
+    private string? error;
+
+    protected override async Task OnInitializedAsync() => sites = await Api.GetSitesAsync();
+
+    private async Task Create()
+    {
+        error = null;
+        try { await Api.CreateSiteAsync(new SiteInput(input.Name, input.TimeZone, input.VlanMode)); input = new(); sites = await Api.GetSitesAsync(); }
+        catch (ApiException ex) { error = ex.Message; }
+    }
+
+    private async Task Delete(Guid id) { await Api.DeleteSiteAsync(id); sites = await Api.GetSitesAsync(); }
+
+    private sealed class SiteForm { public string Name { get; set; } = ""; public string TimeZone { get; set; } = "UTC"; public VlanMode VlanMode { get; set; } }
+}

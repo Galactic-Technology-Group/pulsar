@@ -1,0 +1,13 @@
+bin/
+obj/
+out/
+dist/
+*.user
+*.suo
+.vs/
+.idea/
+TestResults/
+*.trx
+appsettings.*.local.json
+.env
+*.pfx

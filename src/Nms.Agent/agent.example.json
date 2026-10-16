@@ -1,0 +1,7 @@
+{
+  "ApiBaseUrl": "https://nms-api.example.com",
+  "EnrollmentToken": "paste-one-time-token-here",
+  "Name": "site-a-pi",
+  "StateDir": "/var/lib/nms-agent",
+  "Interfaces": []
+}

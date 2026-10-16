@@ -1,0 +1,65 @@
+@page "/incidents"
+@inject NmsApiClient Api
+@inject LiveUpdates Live
+@implements IDisposable
+
+<PageTitle>Incidents</PageTitle>
+<h1>Incidents
+    <span class="range">
+        <button class="small @(open ? "active" : "")" @onclick="() => SetOpen(true)">Open</button>
+        <button class="small @(!open ? "active" : "")" @onclick="() => SetOpen(false)">All</button>
+    </span>
+</h1>
+
+@if (incidents is null) { <p class="muted">Loading…</p> }
+else if (incidents.Count == 0) { <div class="card"><p>No @(open ? "open " : "")incidents.</p></div> }
+else
+{
+    <table class="grid">
+        <thead><tr><th>Opened</th><th>Site</th><th>Kind</th><th>Summary</th><th>Duration</th><th>Ack</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var i in incidents)
+        {
+            <tr class="@(i.ClosedUtc is null ? "down-row" : "")">
+                <td>@i.OpenedUtc.ToLocalTime().ToString("g")</td>
+                <td>@(siteNames.GetValueOrDefault(i.SiteId, "?"))</td>
+                <td>@(i.Kind == IncidentKind.AgentOffline ? "Agent offline" : "Check down")</td>
+                <td>@i.Summary</td>
+                <td>@Duration(i)</td>
+                <td>@(i.AckBy is null ? "" : $"{i.AckBy} @ {i.AckUtc?.ToLocalTime():t}")</td>
+                <td>
+                    @if (i.ClosedUtc is null && i.AckBy is null)
+                    {
+                        <AuthorizeView Roles="Nms.Admin,Nms.Operator"><button class="small" @onclick="() => Ack(i.Id)">Acknowledge</button></AuthorizeView>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Incident>? incidents;
+    private Dictionary<Guid, string> siteNames = new();
+    private bool open = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        siteNames = (await Api.GetSitesAsync()).ToDictionary(s => s.Id, s => s.Name);
+        await Load();
+        await Live.EnsureConnectedAsync();
+        Live.Changed += OnChanged;
+    }
+    private async Task Load() => incidents = await Api.GetIncidentsAsync(open);
+    private async Task SetOpen(bool o) { open = o; await Load(); }
+    private async Task OnChanged() { await Load(); await InvokeAsync(StateHasChanged); }
+    private async Task Ack(Guid id) { await Api.AckIncidentAsync(id); await Load(); }
+    public void Dispose() => Live.Changed -= OnChanged;
+
+    private static string Duration(Incident i)
+    {
+        var d = (i.ClosedUtc ?? DateTimeOffset.UtcNow) - i.OpenedUtc;
+        return d.TotalHours >= 1 ? $"{(int)d.TotalHours}h {d.Minutes}m" : $"{(int)d.TotalMinutes}m {d.Seconds}s";
+    }
+}

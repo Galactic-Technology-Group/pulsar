@@ -1,0 +1,59 @@
+﻿@page "/"
+@inject NmsApiClient Api
+@inject LiveUpdates Live
+@implements IDisposable
+
+<PageTitle>NMS Dashboard</PageTitle>
+<h1>Dashboard</h1>
+
+@if (sites is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (sites.Count == 0)
+{
+    <div class="card"><p>No sites yet. <a href="sites">Create your first site</a> and enrol an agent.</p></div>
+}
+else
+{
+    <div class="kpis">
+        <div class="kpi"><div class="n">@sites.Sum(s => s.Devices)</div><div class="l">Devices</div></div>
+        <div class="kpi down"><div class="n">@sites.Sum(s => s.Down)</div><div class="l">Checks down</div></div>
+        <div class="kpi degraded"><div class="n">@sites.Sum(s => s.Degraded)</div><div class="l">Degraded</div></div>
+        <div class="kpi"><div class="n">@sites.Sum(s => s.AgentsOnline) / @sites.Sum(s => s.AgentsTotal)</div><div class="l">Agents online</div></div>
+        <div class="kpi"><div class="n">@sites.Sum(s => s.OpenIncidents)</div><div class="l">Open incidents</div></div>
+    </div>
+
+    <div class="tiles">
+        @foreach (var s in sites)
+        {
+            var worst = s.AgentsTotal > 0 && s.AgentsOnline == 0 ? "offline" : s.Down > 0 ? "down" : s.Degraded > 0 ? "degraded" : "up";
+            <a class="tile @worst" href="sites/@s.Id">
+                <div class="title">@s.Name</div>
+                <div class="row"><span>@s.Devices devices</span><span>@s.AgentsOnline/@s.AgentsTotal agents</span></div>
+                <div class="row counts">
+                    <span class="up">@s.Up up</span>
+                    <span class="down">@s.Down down</span>
+                    <span class="degraded">@s.Degraded degraded</span>
+                    @if (s.Unknown > 0) { <span class="unknown">@s.Unknown unknown</span> }
+                </div>
+                @if (s.OpenIncidents > 0) { <div class="row"><b>@s.OpenIncidents open incident(s)</b></div> }
+            </a>
+        }
+    </div>
+}
+
+@code {
+    private List<SiteSummary>? sites;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+        await Live.EnsureConnectedAsync();
+        Live.Changed += OnChanged;
+    }
+
+    private async Task Load() => sites = await Api.GetDashboardAsync();
+    private async Task OnChanged() { await Load(); await InvokeAsync(StateHasChanged); }
+    public void Dispose() => Live.Changed -= OnChanged;
+}

@@ -1,0 +1,199 @@
+@page "/sites/{SiteId:guid}"
+@inject NmsApiClient Api
+@inject LiveUpdates Live
+@implements IDisposable
+
+@if (site is null) { <p class="muted">Loading…</p> }
+else
+{
+    <PageTitle>@site.Name</PageTitle>
+    <h1>@site.Name <small class="muted">@site.VlanMode</small></h1>
+
+    <section class="card">
+        <h3>Agents</h3>
+        <table class="grid">
+            <thead><tr><th>Name</th><th>Status</th><th>Host</th><th>Version</th><th>Last seen</th><th>Interfaces</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var a in agents)
+            {
+                <tr>
+                    <td>@a.Name</td>
+                    <td><StateBadge Agent="a.Status" /></td>
+                    <td>@a.Hostname</td>
+                    <td>@a.Version</td>
+                    <td title="@a.LastSeenUtc">@Ago(a.LastSeenUtc)</td>
+                    <td class="small">@string.Join(", ", a.Interfaces.Select(i => $"{i.Name}{(i.VlanId is null ? "" : $" (VLAN {i.VlanId})")} {i.Address}/{i.PrefixLength}"))</td>
+                    <td class="actions">
+                        <AuthorizeView Roles="Nms.Admin,Nms.Operator">
+                            <button class="small" @onclick="() => Reissue(a.Id)">Re-issue token</button>
+                            <button class="small" @onclick="() => OpenDiscovery(a)" disabled="@(a.Status != AgentStatus.Online)">Discover</button>
+                        </AuthorizeView>
+                        <AuthorizeView Roles="Nms.Admin">
+                            <button class="danger small" @onclick="() => Revoke(a.Id)">Revoke</button>
+                        </AuthorizeView>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <AuthorizeView Roles="Nms.Admin,Nms.Operator">
+            <div class="form-row">
+                <input placeholder="New agent name" @bind="newAgentName" />
+                <button class="primary" @onclick="CreateAgent" disabled="@string.IsNullOrWhiteSpace(newAgentName)">Add agent</button>
+            </div>
+        </AuthorizeView>
+        @if (token is not null)
+        {
+            <div class="token">
+                <b>Enrollment token (shown once, valid 24 h):</b>
+                <code>@token.EnrollmentToken</code>
+                <p class="small">On the agent host: <code>sudo ./install.sh --api-url &lt;api-url&gt; --token @token.EnrollmentToken</code></p>
+            </div>
+        }
+    </section>
+
+    @if (discoveryAgent is not null)
+    {
+        <section class="card">
+            <h3>Discovery via @discoveryAgent.Name</h3>
+            <div class="form-row">
+                <label>CIDR <input @bind="discoveryCidr" placeholder="10.20.0.0/24" /></label>
+                <label>VLAN <input type="number" @bind="discoveryVlan" /></label>
+                <button class="primary" @onclick="RunDiscovery" disabled="@discoveryRunning">@(discoveryRunning ? "Scanning…" : "Scan")</button>
+                <button @onclick="() => discoveryAgent = null">Close</button>
+            </div>
+            @if (discovery is not null)
+            {
+                @if (discovery.Error is not null) { <p class="error">@discovery.Error</p> }
+                <table class="grid">
+                    <thead><tr><th>Address</th><th>MAC</th><th>Latency</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach (var h in discovery.Hosts)
+                    {
+                        var known = devices.Any(d => d.Address == h.Address);
+                        <tr>
+                            <td>@h.Address</td><td>@h.MacAddress</td><td>@(h.LatencyMs is null ? "-" : h.LatencyMs + " ms")</td>
+                            <td>@if (known) { <span class="muted">monitored</span> } else { <button class="small" @onclick="() => AddDiscovered(h)">Monitor</button> }</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </section>
+    }
+
+    <section class="card">
+        <h3>Devices</h3>
+        <AuthorizeView Roles="Nms.Admin,Nms.Operator">
+            <div class="form-row">
+                <input placeholder="Name" @bind="dev.Name" />
+                <input placeholder="IP or hostname" @bind="dev.Address" />
+                <input type="number" placeholder="VLAN" @bind="dev.VlanId" style="width:6em" />
+                <input placeholder="tags, comma separated" @bind="dev.Tags" />
+                <label><input type="checkbox" @bind="dev.IsCritical" /> critical</label>
+                <button class="primary" @onclick="CreateDevice" disabled="@(string.IsNullOrWhiteSpace(dev.Name) || string.IsNullOrWhiteSpace(dev.Address))">Add device</button>
+            </div>
+            @if (error is not null) { <p class="error">@error</p> }
+        </AuthorizeView>
+        <table class="grid">
+            <thead><tr><th>Device</th><th>Address</th><th>VLAN</th><th>Checks</th><th>Tags</th></tr></thead>
+            <tbody>
+            @foreach (var d in devices.OrderBy(d => Worst(d)).ThenBy(d => d.Name))
+            {
+                <tr class="@(d.IsCritical ? "" : "muted")">
+                    <td><a href="devices/@d.Id">@d.Name</a>@(d.IsCritical ? "" : " (non-critical)")</td>
+                    <td>@d.Address</td>
+                    <td>@d.VlanId</td>
+                    <td>@foreach (var c in d.Checks) { <StateBadge State="c.State" Title="@CheckLabel(c)" /> }</td>
+                    <td class="small">@string.Join(", ", d.Tags)</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </section>
+}
+
+@code {
+    [Parameter] public Guid SiteId { get; set; }
+    private Site? site;
+    private List<Agent> agents = new();
+    private List<Device> devices = new();
+    private string newAgentName = "";
+    private AgentCreated? token;
+    private DeviceForm dev = new();
+    private string? error;
+    private Agent? discoveryAgent;
+    private string discoveryCidr = "";
+    private int? discoveryVlan;
+    private bool discoveryRunning;
+    private DiscoveryResult? discovery;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+        await Live.EnsureConnectedAsync(SiteId);
+        Live.Changed += OnChanged;
+    }
+
+    private async Task Load()
+    {
+        site = await Api.GetSiteAsync(SiteId);
+        agents = await Api.GetAgentsAsync(SiteId);
+        devices = await Api.GetDevicesAsync(SiteId);
+    }
+    private async Task OnChanged() { await Load(); await InvokeAsync(StateHasChanged); }
+    public void Dispose() => Live.Changed -= OnChanged;
+
+    private async Task CreateAgent() { token = await Api.CreateAgentAsync(SiteId, new AgentInput(newAgentName)); newAgentName = ""; agents = await Api.GetAgentsAsync(SiteId); }
+    private async Task Reissue(Guid id) { token = await Api.ReissueTokenAsync(id); agents = await Api.GetAgentsAsync(SiteId); }
+    private async Task Revoke(Guid id) { await Api.RevokeAgentAsync(id); agents = await Api.GetAgentsAsync(SiteId); }
+
+    private void OpenDiscovery(Agent a)
+    {
+        discoveryAgent = a; discovery = null;
+        var first = a.Interfaces.FirstOrDefault();
+        if (first is not null) { discoveryCidr = $"{first.Address}/{first.PrefixLength}"; discoveryVlan = first.VlanId; }
+    }
+    private async Task RunDiscovery()
+    {
+        if (discoveryAgent is null) return;
+        discoveryRunning = true; discovery = null; error = null;
+        try
+        {
+            var id = await Api.StartDiscoveryAsync(discoveryAgent.Id, discoveryCidr, discoveryVlan);
+            for (var i = 0; i < 60 && discovery is null; i++) { await Task.Delay(1000); discovery = await Api.GetDiscoveryAsync(id); }
+            if (discovery is null) error = "Discovery timed out";
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { discoveryRunning = false; }
+    }
+    private async Task AddDiscovered(DiscoveredHost h)
+    {
+        await Api.CreateDeviceAsync(SiteId, new DeviceInput(h.Address, h.Address, discoveryVlan, true, [], h.MacAddress is null ? null : $"MAC {h.MacAddress}"));
+        devices = await Api.GetDevicesAsync(SiteId);
+    }
+
+    private async Task CreateDevice()
+    {
+        error = null;
+        try
+        {
+            var tags = (dev.Tags ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            await Api.CreateDeviceAsync(SiteId, new DeviceInput(dev.Name, dev.Address, dev.VlanId, dev.IsCritical, tags));
+            dev = new(); devices = await Api.GetDevicesAsync(SiteId);
+        }
+        catch (ApiException ex) { error = ex.Message; }
+    }
+
+    private static int Worst(Device d) => d.Checks.Count == 0 ? 3 : d.Checks.Min(c => c.State switch { CheckState.Down => 0, CheckState.Degraded => 1, CheckState.Unknown => 2, _ => 3 });
+    private static string CheckLabel(Check c) => c.Type + (c.Port is null ? "" : ":" + c.Port) + (c.LastLatencyMs is null ? "" : $" {c.LastLatencyMs} ms");
+    private static string Ago(DateTimeOffset? t) => t is null ? "never" : (DateTimeOffset.UtcNow - t.Value) switch
+    {
+        { TotalSeconds: < 90 } s => $"{(int)s.TotalSeconds}s ago",
+        { TotalMinutes: < 90 } s => $"{(int)s.TotalMinutes}m ago",
+        { TotalHours: < 36 } s => $"{(int)s.TotalHours}h ago",
+        var s => $"{(int)s.TotalDays}d ago",
+    };
+
+    private sealed class DeviceForm { public string Name { get; set; } = ""; public string Address { get; set; } = ""; public int? VlanId { get; set; } public string? Tags { get; set; } public bool IsCritical { get; set; } = true; }
+}
