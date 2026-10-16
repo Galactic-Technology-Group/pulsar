@@ -16,13 +16,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
-        with: { dotnet-version: "8.0.x" }
+        with:
+          dotnet-version: "8.0.x"
       - run: dotnet restore Nms.sln
       - run: dotnet build Nms.sln -c Release --no-restore
       - run: dotnet test Nms.sln -c Release --no-build --logger "trx;LogFileName=results.trx"
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: test-results, path: "**/TestResults/*.trx" }
+        with:
+          name: test-results
+          path: "**/TestResults/*.trx"
 
   agent:
     needs: test
@@ -33,7 +36,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
-        with: { dotnet-version: "8.0.x" }
+        with:
+          dotnet-version: "8.0.x"
       - name: Publish agent (${{ matrix.rid }})
         run: dotnet publish src/Nms.Agent/Nms.Agent.csproj -c Release -r ${{ matrix.rid }} -o out/${{ matrix.rid }}
       - name: Checksum
@@ -42,39 +46,52 @@ jobs:
           mv nms-agent nms-agent-${{ matrix.rid }}
           sha256sum nms-agent-${{ matrix.rid }} > nms-agent-${{ matrix.rid }}.sha256
       - uses: actions/upload-artifact@v4
-        with: { name: nms-agent-${{ matrix.rid }}, path: out/${{ matrix.rid }}/nms-agent-${{ matrix.rid }}* }
+        with:
+          name: nms-agent-${{ matrix.rid }}
+          path: out/${{ matrix.rid }}/nms-agent-${{ matrix.rid }}*
 
   release:
-    # Tag v1.2.3 -> GitHub release with both agent binaries + checksums + install.sh.
+    # Tag v1.2.3 -> GitHub release with both agent binaries + checksums + install assets.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: agent
     runs-on: ubuntu-latest
-    permissions: { contents: write }
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: { path: dist, merge-multiple: true }
-      - run: cp deploy/agent/install.sh deploy/agent/nms-agent.service dist/ 2>/dev/null || true
+        with:
+          path: dist
+          merge-multiple: true
+      - run: cp deploy/agent/install.sh deploy/agent/uninstall.sh deploy/agent/vlan-setup.sh deploy/agent/nms-agent.service dist/
       - uses: softprops/action-gh-release@v2
-        with: { files: dist/* }
+        with:
+          files: dist/*
 
   images:
     needs: test
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
-    permissions: { packages: write, contents: read }
+    permissions:
+      packages: write
+      contents: read
     strategy:
       matrix:
         app: [Nms.Api, Nms.Portal, Nms.Worker]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
-        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: src/${{ matrix.app }}/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}:${{ github.sha }},ghcr.io/${{ github.repository_owner }}/${{ matrix.app }}:latest
+          tags: |
+            ghcr.io/galactic-technology-group/pulsar-${{ matrix.app }}:${{ github.sha }}
+            ghcr.io/galactic-technology-group/pulsar-${{ matrix.app }}:latest
       # Swap ghcr.io for your ACR login server and `az acr login` when deploying to Container Apps.
