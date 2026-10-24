@@ -77,7 +77,10 @@ jobs:
       contents: read
     strategy:
       matrix:
-        app: [Nms.Api, Nms.Portal, Nms.Worker]
+        include:
+          - { app: Nms.Api, image: pulsar-api }
+          - { app: Nms.Portal, image: pulsar-portal }
+          - { app: Nms.Worker, image: pulsar-worker }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
@@ -92,6 +95,6 @@ jobs:
           file: src/${{ matrix.app }}/Dockerfile
           push: true
           tags: |
-            ghcr.io/galactic-technology-group/pulsar-${{ matrix.app }}:${{ github.sha }}
-            ghcr.io/galactic-technology-group/pulsar-${{ matrix.app }}:latest
+            ghcr.io/galactic-technology-group/${{ matrix.image }}:${{ github.sha }}
+            ghcr.io/galactic-technology-group/${{ matrix.image }}:latest
       # Swap ghcr.io for your ACR login server and `az acr login` when deploying to Container Apps.
