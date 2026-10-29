@@ -24,6 +24,7 @@ if (devAuth)
 }
 else
 {
+    builder.Services.AddSingleton<IClaimsTransformation, RoleClaimsNormalizer>();
     builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
         .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"))
         .EnableTokenAcquisitionToCallDownstreamApi(apiScope is null ? [] : [apiScope])

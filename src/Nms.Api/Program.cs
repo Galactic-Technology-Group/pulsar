@@ -35,6 +35,7 @@ if (devAuth)
 else
     auth.AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
 
+builder.Services.AddSingleton<IClaimsTransformation, RoleClaimsNormalizer>();
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy(AgentAuth.Policy, p => p.AddAuthenticationSchemes(AgentAuth.Scheme).RequireAuthenticatedUser().RequireRole("Agent"))
     .AddPolicy(Policies.User, p => p
