@@ -35,7 +35,7 @@ public static class AgentEndpoints
             agent.Version = req.AgentVersion;
             agent.Status = AgentStatus.Offline;
             agent.LastSeenUtc = DateTimeOffset.UtcNow;
-            AgentHub.UpsertInterfaces(agent, req.Interfaces);
+            AgentHub.UpsertInterfaces(db, agent, req.Interfaces);
             await db.SaveChangesAsync(ct);
             log.LogInformation("Agent {AgentId} ({Host}) enrolled at site {Site}", agent.Id, req.Hostname, agent.Site.Name);
             return Results.Ok(new EnrollResponse(agent.Id, secret, agent.SiteId, agent.Site.Name));

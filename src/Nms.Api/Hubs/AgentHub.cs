@@ -53,7 +53,7 @@ public sealed class AgentHub(NmsDbContext db, AgentRegistry registry, AgentConfi
             agent.Status = AgentStatus.Online;
             await portal.Clients.Group(PortalHub.SiteGroup(agent.SiteId)).AgentStatusChanged(agent.SiteId, agentId, AgentStatus.Online, agent.LastSeenUtc.Value);
         }
-        UpsertInterfaces(agent, hb.Interfaces);
+        UpsertInterfaces(db, agent, hb.Interfaces);
         await db.SaveChangesAsync();
     }
 
@@ -65,14 +65,18 @@ public sealed class AgentHub(NmsDbContext db, AgentRegistry registry, AgentConfi
 
     public Task<AgentConfigDto> GetConfig() => configBuilder.BuildAsync(Context.User!.AgentId(), Context.ConnectionAborted);
 
-    internal static void UpsertInterfaces(Agent agent, IReadOnlyList<InterfaceInfo> reported)
+    /// <summary>
+    /// New interfaces are added through the context, not the navigation collection: with a pre-set Guid key,
+    /// DetectChanges would track them as Modified and the UPDATE would hit zero rows (DbUpdateConcurrencyException).
+    /// </summary>
+    internal static void UpsertInterfaces(NmsDbContext db, Agent agent, IReadOnlyList<InterfaceInfo> reported)
     {
         var now = DateTimeOffset.UtcNow;
         foreach (var i in reported)
         {
             var existing = agent.Interfaces.FirstOrDefault(x => x.Name == i.Name && x.Address == i.Address);
             if (existing is null)
-                agent.Interfaces.Add(new AgentInterface { Id = Guid.NewGuid(), AgentId = agent.Id, Name = i.Name, VlanId = i.VlanId, Address = i.Address, PrefixLength = i.PrefixLength, LastReportedUtc = now });
+                db.AgentInterfaces.Add(new AgentInterface { Id = Guid.NewGuid(), AgentId = agent.Id, Name = i.Name, VlanId = i.VlanId, Address = i.Address, PrefixLength = i.PrefixLength, LastReportedUtc = now });
             else { existing.VlanId = i.VlanId; existing.PrefixLength = i.PrefixLength; existing.LastReportedUtc = now; }
         }
     }
