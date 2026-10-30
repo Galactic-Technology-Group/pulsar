@@ -68,7 +68,7 @@ Run an agent against the local API (any Linux box or WSL):
 
 ## Entra ID setup (production)
 
-1. App registration **nms-api**: expose scope `access_as_user`; define app roles `Nms.Admin`, `Nms.Operator`, `Nms.Viewer`; assign users/groups.
+1. App registration **nms-api**: expose scope `access_as_user`; define app roles `Nms.Admin`, `Nms.Operator`, `Nms.Viewer`; assign users/groups. Roles are defined here only: the portal reads them from the API access token, so nothing needs to be assigned on the portal registration.
 2. App registration **nms-portal**: web redirect `https://<portal>/signin-oidc`, client secret in Key Vault, API permission to `nms-api/access_as_user`.
 3. Configure `AzureAd` sections in `src/Nms.Api/appsettings.json` and `src/Nms.Portal/appsettings.json`, and set `Api:Scope` on the portal to `api://<nms-api-client-id>/access_as_user`.
 
