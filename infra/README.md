@@ -49,7 +49,7 @@ az rest --method get --url "https://management.azure.com/subscriptions/<sub>/pro
 
 ## TimescaleDB
 
-The template allow-lists the extension (`azure.extensions = TIMESCALEDB`) and preloads it. The API runs `CREATE EXTENSION IF NOT EXISTS timescaledb` and creates the hypertable, compression, retention and the 5-minute continuous aggregate on first start (`src/Nms.Data/TimescaleSql.cs`). To do it by hand:
+The template allow-lists the extension (`azure.extensions = TIMESCALEDB`) and preloads it. Azure ships the **Apache-licensed** TimescaleDB build: hypertables and `time_bucket` work, but compression, retention policies and continuous aggregates are Community (TSL) features and are skipped with a warning on first start. The worker's `RetentionJob` prunes raw rows instead, and the API reads raw results when the 5-minute aggregate is missing. The API runs `CREATE EXTENSION IF NOT EXISTS timescaledb` and creates the hypertable, compression, retention and the 5-minute continuous aggregate on first start (`src/Nms.Data/TimescaleSql.cs`). To do it by hand:
 
 ```bash
 psql "host=<fqdn> dbname=nms user=nmsadmin sslmode=require" -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"

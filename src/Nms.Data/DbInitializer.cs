@@ -17,13 +17,28 @@ public static class DbInitializer
 
         try
         {
-            await db.Database.ExecuteSqlRawAsync(TimescaleSql.Setup, ct);
-            log.LogInformation("Timescale setup applied");
+            await db.Database.ExecuteSqlRawAsync(TimescaleSql.Required, ct);
+            log.LogInformation("Timescale hypertable ready");
         }
         catch (Exception ex)
         {
             // Timescale may be missing in local dev; history still works as a plain table.
             log.LogWarning(ex, "Timescale setup failed; check_results will be a plain table");
+            return;
+        }
+
+        foreach (var (feature, sql) in TimescaleSql.Optional)
+        {
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(sql, ct);
+                log.LogInformation("Timescale {Feature} applied", feature);
+            }
+            catch (Exception ex)
+            {
+                // 0A000 = feature not available under the Apache license (Azure Database for PostgreSQL).
+                log.LogWarning("Timescale {Feature} not available on this server: {Message}", feature, ex.Message);
+            }
         }
     }
 }
