@@ -1,3 +1,4 @@
+using Nms.Shared;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Options;
 using Nms.Agent.Network;
@@ -40,6 +41,7 @@ public sealed class HubConnectionService(
                     o.HttpMessageHandlerFactory = h => { if (h is HttpClientHandler hh) hh.ServerCertificateCustomValidationCallback = (_, _, _, _) => true; return h; };
             })
             .WithAutomaticReconnect(new BackoffRetryPolicy())
+            .AddJsonProtocol(o => o.PayloadSerializerOptions = NmsJson.Options)
             .Build();
 
         _hub.On<AgentConfigDto>(nameof(IAgentClient.ConfigUpdated), cfg => { scheduler.ApplyConfig(cfg); return Task.CompletedTask; });

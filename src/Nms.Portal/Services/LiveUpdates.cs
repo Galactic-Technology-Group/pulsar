@@ -23,6 +23,7 @@ public sealed class LiveUpdates(IConfiguration config, IServiceProvider services
                         o.AccessTokenProvider = async () => await services.GetRequiredService<ITokenAcquisition>().GetAccessTokenForUserAsync([scope]);
                 })
                 .WithAutomaticReconnect()
+                .AddJsonProtocol(o => o.PayloadSerializerOptions = NmsJson.Options)
                 .Build();
             _hub.On<Guid, Guid, Guid, CheckState, DateTimeOffset>(nameof(IPortalClient.CheckStateChanged), (_, _, _, _, _) => Raise());
             _hub.On<Guid, Guid, AgentStatus, DateTimeOffset>(nameof(IPortalClient.AgentStatusChanged), (_, _, _, _) => Raise());

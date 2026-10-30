@@ -8,6 +8,7 @@ using Nms.Api.Endpoints;
 using Nms.Api.Hubs;
 using Nms.Api.Services;
 using Nms.Data;
+using Nms.Shared;
 using Nms.Shared.Contracts;
 using Nms.Shared.Hubs;
 
@@ -20,11 +21,11 @@ builder.Services.AddMemoryCache();
 
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
-    o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());   // keep in sync with NmsJson.Options
     o.SerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
 });
 builder.Services.AddSignalR(o => o.MaximumReceiveMessageSize = 1024 * 1024)
-    .AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonProtocol(o => o.PayloadSerializerOptions = NmsJson.Options);
 
 // ---- Authentication: agents (header secret) + humans (Entra ID JWT, or Dev scheme locally) ----
 var devAuth = builder.Configuration["Auth:Mode"] == "Development";

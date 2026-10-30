@@ -1,3 +1,4 @@
+using Nms.Shared;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Options;
@@ -25,20 +26,20 @@ public sealed class ApiClient
 
     public async Task<EnrollResponse> EnrollAsync(EnrollRequest req, CancellationToken ct)
     {
-        using var resp = await _http.PostAsJsonAsync("api/agents/enroll", req, ct);
+        using var resp = await _http.PostAsJsonAsync("api/agents/enroll", req, NmsJson.Options, ct);
         if (!resp.IsSuccessStatusCode)
             throw new InvalidOperationException($"Enrollment failed: {(int)resp.StatusCode} {await resp.Content.ReadAsStringAsync(ct)}");
-        return (await resp.Content.ReadFromJsonAsync<EnrollResponse>(ct))!;
+        return (await resp.Content.ReadFromJsonAsync<EnrollResponse>(NmsJson.Options, ct))!;
     }
 
     public async Task<ResultsAck> PostResultsAsync(ResultsBatch batch, CancellationToken ct)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Post, "api/results") { Content = JsonContent.Create(batch) };
+        using var req = new HttpRequestMessage(HttpMethod.Post, "api/results") { Content = JsonContent.Create(batch, options: NmsJson.Options) };
         AddAuth(req);
         using var resp = await _http.SendAsync(req, ct);
         if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized) throw new UnauthorizedAccessException("Agent credentials rejected");
         resp.EnsureSuccessStatusCode();
-        return (await resp.Content.ReadFromJsonAsync<ResultsAck>(ct))!;
+        return (await resp.Content.ReadFromJsonAsync<ResultsAck>(NmsJson.Options, ct))!;
     }
 
     public async Task<AgentVersionInfo?> GetLatestVersionAsync(CancellationToken ct)
@@ -48,7 +49,7 @@ public sealed class ApiClient
         using var resp = await _http.SendAsync(req, ct);
         if (resp.StatusCode == System.Net.HttpStatusCode.NoContent) return null;
         resp.EnsureSuccessStatusCode();
-        return await resp.Content.ReadFromJsonAsync<AgentVersionInfo>(ct);
+        return await resp.Content.ReadFromJsonAsync<AgentVersionInfo>(NmsJson.Options, ct);
     }
 
     public async Task DownloadAsync(string url, string destination, CancellationToken ct)
