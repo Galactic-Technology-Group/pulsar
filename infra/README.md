@@ -74,3 +74,8 @@ az deployment group what-if -g rg-nms-dev -f infra/main.bicep -p infra/main.bice
 ## Cost notes (dev)
 
 B2s Postgres and a Basic registry are the only always-on charges of note; Container Apps consumption with min replicas 1 for three small apps stays low. Log Analytics retention is 30 days. Use `-p env=prod` with a larger `skuName` on the Postgres module when the fleet grows.
+
+## Redeploying: the secret parameters are mandatory
+
+`main.bicepparam` reads `NMS_PG_PASSWORD`, `NMS_API_CLIENT_ID`, `NMS_PORTAL_CLIENT_ID` and `NMS_PORTAL_CLIENT_SECRET` from the environment **without defaults**, so `az deployment group create` fails to compile when they are not set. This is deliberate: on 2026-10-30 a redeploy with the variables missing wrote an empty password into the `pg-connection` Key Vault secret and zero client ids into the container apps, taking the API down until the Postgres admin password was reset and the deployment re-run. Keep the values in a local env file outside the repo and `set -a; . pulsar-dev.env; set +a` before deploying. The Postgres password exists only there and in Key Vault; if both are lost, reset it on the server (Azure portal → the flexible server → Reset password) and redeploy.
+

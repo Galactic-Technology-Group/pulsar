@@ -27,7 +27,8 @@ param baseName string = 'nms'
 param pgAdminLogin string = 'nmsadmin'
 
 @secure()
-@description('PostgreSQL administrator password.')
+@description('PostgreSQL administrator password. Also written into the pg-connection secret, so an empty value would break every app.')
+@minLength(12)
 param pgAdminPassword string
 
 @description('Container image for the API. Defaults to a placeholder so the first deploy works before your images exist.')
@@ -38,12 +39,15 @@ param workerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 @description('Entra ID tenant id for portal/API sign-in.')
 param tenantId string = subscription().tenantId
 @description('App registration (client) id of the API.')
-param apiClientId string = ''
+@minLength(36)
+param apiClientId string
 @description('App registration (client) id of the portal.')
-param portalClientId string = ''
+@minLength(36)
+param portalClientId string
 @secure()
 @description('Client secret of the portal app registration.')
-param portalClientSecret string = ''
+@minLength(8)
+param portalClientSecret string
 
 @description('Data location for Azure Communication Services (e.g. United States, Europe).')
 param acsDataLocation string = 'United States'
@@ -123,7 +127,7 @@ module secrets 'modules/secrets.bicep' = {
     secrets: {
       'pg-connection': 'Host=${postgres.outputs.fqdn};Port=5432;Database=nms;Username=${pgAdminLogin};Password=${pgAdminPassword};SSL Mode=Require;Trust Server Certificate=true'
       'acs-connection': acs.outputs.connectionString
-      'portal-client-secret': empty(portalClientSecret) ? 'replace-me' : portalClientSecret
+      'portal-client-secret': portalClientSecret
     }
   }
 }
