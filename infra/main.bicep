@@ -151,6 +151,8 @@ var kvUri = keyVault.outputs.uri
 var commonEnv = [
   { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: logging.outputs.appInsightsConnectionString }
   { name: 'ASPNETCORE_ENVIRONMENT', value: 'Production' }
+  // Container Apps ingress terminates TLS; honour X-Forwarded-Proto so HTTPS redirection and OIDC redirect URIs are correct.
+  { name: 'ASPNETCORE_FORWARDEDHEADERS_ENABLED', value: 'true' }
 ]
 
 module api 'modules/containerapp.bicep' = {
