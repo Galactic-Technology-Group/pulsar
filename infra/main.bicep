@@ -95,7 +95,8 @@ module keyVault 'modules/keyvault.bicep' = {
 module postgres 'modules/postgres.bicep' = {
   name: 'postgres'
   params: {
-    name: 'pg-${name}-${take(suffix, 6)}'
+    // Name includes the region so moving the DB never collides with a dropped server's reserved name.
+    name: 'pg-${name}-${take(uniqueString(resourceGroup().id, postgresLocation), 6)}'
     location: postgresLocation
     tags: tags
     adminLogin: pgAdminLogin
