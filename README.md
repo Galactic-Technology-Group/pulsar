@@ -27,7 +27,7 @@ Site (LAN, behind NAT)                        Azure
 | `tests/` | xUnit tests |
 | `infra/` | Bicep for the Azure environment |
 | `deploy/agent/` | `install.sh`, systemd unit, VLAN helper |
-| `docs/` | Architecture, VLAN setup, agent install |
+| `docs/` | Architecture, VLAN setup, agent install, credential rotation register |
 
 ## Run locally
 
