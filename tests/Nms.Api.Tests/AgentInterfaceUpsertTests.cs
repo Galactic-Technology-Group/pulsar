@@ -8,16 +8,17 @@ namespace Nms.Api.Tests;
 
 public class AgentInterfaceUpsertTests
 {
-    private static NmsDbContext Db() => new(new DbContextOptionsBuilder<NmsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+    private static NmsDbContext Db(string name) => new(new DbContextOptionsBuilder<NmsDbContext>().UseInMemoryDatabase(name).Options);
 
     [Fact]
     public async Task New_interfaces_are_inserted_and_existing_ones_updated()
     {
+        var dbName = Guid.NewGuid().ToString();
         var site = new Site { Id = Guid.NewGuid(), Name = "HQ" };
         var agent = new Agent { Id = Guid.NewGuid(), SiteId = site.Id, Name = "a1" };
-        await using (var seed = Db()) { seed.AddRange(site, agent); await seed.SaveChangesAsync(); }
+        await using (var seed = Db(dbName)) { seed.AddRange(site, agent); await seed.SaveChangesAsync(); }
 
-        await using var db = Db();
+        await using var db = Db(dbName);
         var tracked = await db.Agents.Include(a => a.Interfaces).SingleAsync(a => a.Id == agent.Id);
         AgentHub.UpsertInterfaces(db, tracked, [new InterfaceInfo("eth0", null, "10.0.0.5", 24)]);
         Assert.All(db.ChangeTracker.Entries<AgentInterface>(), e => Assert.Equal(EntityState.Added, e.State));
