@@ -55,6 +55,12 @@ public sealed class AgentHub(NmsDbContext db, AgentRegistry registry, AgentConfi
         }
         UpsertInterfaces(db, agent, hb.Interfaces);
         await db.SaveChangesAsync();
+
+        // Agents that were offline when a release was published catch up here; the agent backs off on its own
+        // if the download or hash check fails, so repeating this every heartbeat is safe.
+        var current = await db.AgentReleases.AsNoTracking().FirstOrDefaultAsync(r => r.IsCurrent);
+        if (ReleasePublisher.PendingUpdate(current, hb.AgentVersion) is { } update)
+            await Clients.Caller.UpdateAvailable(update);
     }
 
     public Task DiscoveryCompleted(DiscoveryResult result)

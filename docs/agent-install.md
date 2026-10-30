@@ -54,7 +54,9 @@ Check definitions never live on the agent; they are pushed from the API whenever
 
 ## Upgrade
 
-Publish a release in the portal (Settings → Agent releases) with the two download URLs and SHA-256 sums from CI. Every connected agent downloads, verifies, swaps the binary and restarts via systemd. Or re-run `install.sh --base-url ...` on the host: do **not** pass the original `--token`, it was consumed at first enrolment.
+Tag the repository (`git tag v0.2.0 && git push origin v0.2.0`); CI builds both binaries, their `.sha256` files and the GitHub release. Then in the portal, Settings → Agent releases → **Publish from GitHub release** (leave the tag blank for the latest). The API reads the release, records it as current and pushes `UpdateAvailable` to every connected agent; agents that are offline are told at their next heartbeat. Each agent downloads the binary for its architecture (x64 or arm64, so the same release serves Pis and VMs), verifies the SHA-256, swaps `/opt/nms-agent/nms-agent` and exits so systemd restarts it on the new version. A failed download or checksum is logged and retried after an hour.
+
+Builds hosted elsewhere can be published with explicit URLs and checksums under "Publish a build hosted elsewhere". Or re-run `install.sh --base-url ...` on the host: do **not** pass the original `--token`, it was consumed at first enrolment.
 
 ## Uninstall
 

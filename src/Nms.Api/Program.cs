@@ -55,6 +55,12 @@ builder.Services.AddSingleton<AgentRegistry>();
 builder.Services.AddSingleton<DiscoveryStore>();
 builder.Services.AddScoped<AgentConfigBuilder>();
 builder.Services.AddScoped<ResultIngestService>();
+builder.Services.AddScoped<ReleasePublisher>();
+builder.Services.AddHttpClient<GitHubReleaseSource>(c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(30);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("pulsar-nms-api");   // GitHub rejects requests without a User-Agent
+});
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

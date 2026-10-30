@@ -88,14 +88,22 @@
         <thead><tr><th>Version</th><th>Current</th><th>Published</th><th>x64</th><th>arm64</th></tr></thead>
         <tbody>@foreach (var r in releases) { <tr><td>@r.Version</td><td>@(r.IsCurrent ? "✓" : "")</td><td>@r.PublishedUtc.ToLocalTime().ToString("g")</td><td class="small">@r.DownloadUrlX64</td><td class="small">@r.DownloadUrlArm64</td></tr> }</tbody>
     </table>
+    <p class="small">Publishing makes a version current: connected agents download it immediately, agents that are offline pick it up at their next heartbeat. Each agent verifies the SHA-256, swaps its binary and restarts under systemd.</p>
+    <div class="form-row">
+        <input placeholder="GitHub tag, e.g. v0.1.3 (blank = latest)" @bind="importTag" style="width:18em" />
+        <button class="primary" @onclick="ImportRelease" disabled="@importing">@(importing ? "Publishing…" : "Publish from GitHub release")</button>
+    </div>
+    <details>
+        <summary class="small">Publish a build hosted elsewhere</summary>
     <div class="form-row">
         <input placeholder="version e.g. 0.2.0" @bind="rel.Version" style="width:9em" />
         <input placeholder="x64 download URL" @bind="rel.DownloadUrlX64" />
         <input placeholder="x64 sha256" @bind="rel.Sha256X64" />
         <input placeholder="arm64 download URL" @bind="rel.DownloadUrlArm64" />
         <input placeholder="arm64 sha256" @bind="rel.Sha256Arm64" />
-        <button class="primary" @onclick="CreateRelease" disabled="@string.IsNullOrWhiteSpace(rel.Version)">Publish (agents update on next connect)</button>
+        <button class="primary" @onclick="CreateRelease" disabled="@string.IsNullOrWhiteSpace(rel.Version)">Publish</button>
     </div>
+    </details>
 </section>
 @if (error is not null) { <p class="error">@error</p> }
 
@@ -110,6 +118,8 @@
     private RuleForm rl = new();
     private MaintForm mw = new();
     private ReleaseForm rel = new();
+    private string importTag = "";
+    private bool importing;
 
     protected override async Task OnInitializedAsync()
     {
@@ -137,6 +147,12 @@
     private Task CreateMaintenance() => Guard(async () => { await Api.CreateMaintenanceAsync(new MaintenanceInput(mw.SiteId, null, new DateTimeOffset(mw.Start), new DateTimeOffset(mw.End), mw.Reason)); mw = new(); });
     private Task DeleteMaintenance(Guid id) => Guard(() => Api.DeleteMaintenanceAsync(id));
     private Task CreateRelease() => Guard(async () => { await Api.CreateReleaseAsync(new ReleaseInput(rel.Version, rel.DownloadUrlX64, rel.DownloadUrlArm64, rel.Sha256X64, rel.Sha256Arm64)); rel = new(); });
+    private async Task ImportRelease()
+    {
+        importing = true;
+        try { await Guard(async () => { await Api.ImportReleaseAsync(string.IsNullOrWhiteSpace(importTag) ? null : importTag.Trim()); importTag = ""; }); }
+        finally { importing = false; }
+    }
 
     private static string Mask(string json) => System.Text.RegularExpressions.Regex.Replace(json, "(https://[^\"]{12})[^\"]*", "$1…");
 

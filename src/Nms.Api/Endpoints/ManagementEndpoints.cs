@@ -240,14 +240,22 @@ public static class ManagementEndpoints
             await db.MaintenanceWindows.Where(m => m.Id == id).ExecuteDeleteAsync() > 0 ? Results.NoContent() : Results.NotFound());
 
         admin.MapGet("/releases", (NmsDbContext db) => db.AgentReleases.AsNoTracking().OrderByDescending(r => r.PublishedUtc).ToListAsync());
-        admin.MapPost("/releases", async (ReleaseInput input, NmsDbContext db, IHubContext<AgentHub, IAgentClient> hub) =>
+        admin.MapPost("/releases", async (ReleaseInput input, ReleasePublisher publisher, CancellationToken ct) =>
         {
-            if (input.IsCurrent) await db.AgentReleases.Where(r => r.IsCurrent).ExecuteUpdateAsync(s => s.SetProperty(r => r.IsCurrent, false));
-            var r = new AgentRelease { Id = Guid.NewGuid(), Version = input.Version, DownloadUrlX64 = input.DownloadUrlX64, DownloadUrlArm64 = input.DownloadUrlArm64, Sha256X64 = input.Sha256X64, Sha256Arm64 = input.Sha256Arm64, IsCurrent = input.IsCurrent };
-            db.AgentReleases.Add(r); await db.SaveChangesAsync();
-            if (r.IsCurrent) await hub.Clients.All.UpdateAvailable(new AgentVersionInfo(r.Version, r.DownloadUrlX64, r.DownloadUrlArm64, r.Sha256X64, r.Sha256Arm64));
+            var r = await publisher.PublishAsync(input, ct);
             return Results.Created($"/api/releases/{r.Id}", r);
         });
+        // One click in the portal: read the GitHub release (latest, or a tag), take the CI-built binaries and
+        // checksums, publish as current and push to every connected agent.
+        admin.MapPost("/releases/import", async (ReleaseImportRequest req, GitHubReleaseSource github, ReleasePublisher publisher, CancellationToken ct) =>
+        {
+            ReleaseInput input;
+            try { input = await github.FetchAsync(req.Tag, ct); }
+            catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException) { return Results.Problem(ex.Message, statusCode: StatusCodes.Status422UnprocessableEntity); }
+            var r = await publisher.PublishAsync(input with { IsCurrent = true }, ct);
+            return Results.Created($"/api/releases/{r.Id}", r);
+        });
+        admin.MapGet("/releases/source", (GitHubReleaseSource github) => Results.Ok(new { github.Repo }));
 
         return app;
     }

@@ -64,7 +64,7 @@ Run an agent against the local API (any Linux box or WSL):
 - **Notifications**: incidents are batched into one email / Teams card per channel per minute; recoveries are sent too. Rules route by site, tag or globally, with per-rule cooldown.
 - **Multi-VLAN**: *Routed* mode probes other VLANs via the gateway. *Trunked* mode gives the agent 802.1Q sub-interfaces (`eth0.10`, …); each probe binds to the interface whose subnet or VLAN id matches the device, and discovery can sweep a VLAN at L2. See `docs/vlan-setup.md`.
 - **History**: `check_results` is a Timescale hypertable (1-day chunks, compressed after 7 days, dropped after 90). The portal charts come from a 5-minute continuous aggregate.
-- **Self-update**: publishing a release in Settings pushes `UpdateAvailable` to all agents; each verifies the SHA-256 and restarts via systemd.
+- **Self-update**: Settings → Agent releases → *Publish from GitHub release* reads a CI-built release and pushes `UpdateAvailable` to all connected agents (offline ones get it at their next heartbeat); each verifies the SHA-256 and restarts via systemd.
 
 ## Entra ID setup (production)
 

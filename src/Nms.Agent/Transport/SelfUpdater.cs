@@ -8,13 +8,26 @@ namespace Nms.Agent.Transport;
 /// Downloads a new binary next to the running one, verifies SHA-256, swaps it in and exits so systemd restarts us.
 /// Only acts when the version differs and the file hash matches; otherwise it is a no-op.
 /// </summary>
-public sealed class SelfUpdater(ApiClient api, ILogger<SelfUpdater> log)
+public sealed class SelfUpdater(ApiClient api, ILogger<SelfUpdater> log, TimeProvider? clock = null)
 {
+    /// <summary>After a failed attempt the same version is not retried for this long; the API re-offers it on every heartbeat.</summary>
+    public static readonly TimeSpan RetryAfterFailure = TimeSpan.FromHours(1);
+    private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private int _inProgress;
+    private string? _failedVersion;
+    private DateTimeOffset _failedAt;
+
+    /// <summary>True when <paramref name="v"/> is a different version we have not recently failed to install.</summary>
+    internal bool ShouldAttempt(AgentVersionInfo v)
+    {
+        if (string.Equals(v.Version, AgentVersion.Current, StringComparison.OrdinalIgnoreCase)) return false;
+        if (_failedVersion == v.Version && _clock.GetUtcNow() - _failedAt < RetryAfterFailure) return false;
+        return true;
+    }
 
     public async Task TryUpdateAsync(AgentVersionInfo v, CancellationToken ct)
     {
-        if (string.Equals(v.Version, AgentVersion.Current, StringComparison.OrdinalIgnoreCase)) return;
+        if (!ShouldAttempt(v)) return;
         if (!OperatingSystem.IsLinux()) { log.LogInformation("Self-update is Linux-only; skipping {Version}", v.Version); return; }
         if (Interlocked.Exchange(ref _inProgress, 1) == 1) return;
 
@@ -36,6 +49,7 @@ public sealed class SelfUpdater(ApiClient api, ILogger<SelfUpdater> log)
                 {
                     File.Delete(tmp);
                     log.LogError("Hash mismatch for {Version}: expected {Expected}, got {Actual}", v.Version, expected, actual);
+                    MarkFailed(v.Version);
                     return;
                 }
             }
@@ -47,8 +61,11 @@ public sealed class SelfUpdater(ApiClient api, ILogger<SelfUpdater> log)
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            log.LogError(ex, "Self-update failed");
+            log.LogError(ex, "Self-update to {Version} failed; next attempt in {Retry}", v.Version, RetryAfterFailure);
+            MarkFailed(v.Version);
         }
         finally { Interlocked.Exchange(ref _inProgress, 0); }
     }
+
+    private void MarkFailed(string version) { _failedVersion = version; _failedAt = _clock.GetUtcNow(); }
 }
