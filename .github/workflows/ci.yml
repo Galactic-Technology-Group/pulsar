@@ -39,7 +39,11 @@ jobs:
         with:
           dotnet-version: "8.0.x"
       - name: Publish agent (${{ matrix.rid }})
-        run: dotnet publish src/Nms.Agent/Nms.Agent.csproj -c Release -r ${{ matrix.rid }} -o out/${{ matrix.rid }}
+        # On a v1.2.3 tag the binary reports 1.2.3 (heartbeats, enrol, self-update); otherwise the csproj version.
+        run: |
+          VER=""
+          [[ "$GITHUB_REF" == refs/tags/v* ]] && VER="-p:Version=${GITHUB_REF_NAME#v}"
+          dotnet publish src/Nms.Agent/Nms.Agent.csproj -c Release -r ${{ matrix.rid }} -o out/${{ matrix.rid }} $VER
       - name: Checksum
         run: |
           cd out/${{ matrix.rid }}

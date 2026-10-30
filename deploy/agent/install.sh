@@ -3,14 +3,18 @@
 #
 #   sudo ./install.sh --api-url https://nms-api.example.com --token <enrollment token>
 #   sudo ./install.sh --api-url ... --token ... --base-url https://github.com/Galactic-Technology-Group/pulsar/releases/latest/download
+#   sudo ./install.sh --base-url ...               # upgrade in place; config and credentials are kept
+#   sudo ./install.sh --token <new token> --re-enrol  # drop stored credentials and enrol again (e.g. after a revoke)
 #   sudo ./install.sh --local ./nms-agent          # install a binary you built yourself
 #
-# Env overrides: BASE_URL, VERSION (used only for logging).
+# Re-running with --token never discards working credentials: the agent only uses the token when the API
+# rejects its stored secret. Pass --re-enrol to force it. Env overrides: BASE_URL.
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-https://example.invalid/releases/latest}"
 API_URL=""
 TOKEN=""
+REENROL=0
 LOCAL_BIN=""
 AGENT_NAME="$(hostname -s)"
 INSTALL_DIR=/opt/nms-agent
@@ -19,7 +23,7 @@ STATE_DIR=/var/lib/nms-agent
 SVC_USER=nms-agent
 UNIT_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/nms-agent.service"
 
-usage() { sed -n '2,8p' "$0"; exit 1; }
+usage() { sed -n '2,11p' "$0"; exit 1; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -28,6 +32,7 @@ while [[ $# -gt 0 ]]; do
     --base-url) BASE_URL="$2"; shift 2 ;;
     --local)    LOCAL_BIN="$2"; shift 2 ;;
     --name)     AGENT_NAME="$2"; shift 2 ;;
+    --re-enrol|--re-enroll) REENROL=1; shift ;;
     -h|--help)  usage ;;
     *) echo "Unknown argument: $1" >&2; usage ;;
   esac
@@ -100,7 +105,7 @@ EOF
   chmod 0640 "$CONF_DIR/agent.json"
   chown root:"$SVC_USER" "$CONF_DIR/agent.json"
 elif [[ -n "$TOKEN" ]]; then
-  echo "==> Config exists; updating enrollment token (re-enrol)"
+  echo "==> Config exists; storing the new enrollment token"
   python3 - "$CONF_DIR/agent.json" "$TOKEN" "${API_URL}" <<'PY' 2>/dev/null || sed -i "s|\"EnrollmentToken\": *\"[^\"]*\"|\"EnrollmentToken\": \"$TOKEN\"|" "$CONF_DIR/agent.json"
 import json, sys
 p, tok, url = sys.argv[1:4]
@@ -108,9 +113,15 @@ d = json.load(open(p)); d["EnrollmentToken"] = tok
 if url: d["ApiBaseUrl"] = url
 json.dump(d, open(p, "w"), indent=2)
 PY
-  rm -f "$STATE_DIR/credentials"
+  if [[ $REENROL -eq 1 ]]; then
+    echo "==> --re-enrol: removing stored credentials; the agent will enrol with the new token"
+    rm -f "$STATE_DIR/credentials"
+  elif [[ -f "$STATE_DIR/credentials" ]]; then
+    echo "==> Stored credentials kept; the token is only used if the API rejects them (pass --re-enrol to force)"
+  fi
 else
-  echo "==> Keeping existing $CONF_DIR/agent.json"
+  [[ $REENROL -eq 0 ]] || { echo "--re-enrol needs --token <new token>." >&2; exit 1; }
+  echo "==> Keeping existing $CONF_DIR/agent.json and credentials"
 fi
 
 # ---- service ----------------------------------------------------------------------------------

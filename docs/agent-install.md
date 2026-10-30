@@ -21,7 +21,7 @@ sudo ./install.sh --api-url https://nms-api.example.com --token <enrollment toke
   --base-url https://github.com/Galactic-Technology-Group/pulsar/releases/latest/download
 ```
 
-The installer detects the architecture, verifies the SHA-256, creates the `nms-agent` user, installs to `/opt/nms-agent`, grants `cap_net_raw` (ICMP without root), writes `/etc/nms-agent/agent.json`, and enables the service. Re-running it upgrades in place; pass `--token` again to re-enrol after a revoke.
+The installer detects the architecture, verifies the SHA-256, creates the `nms-agent` user, installs to `/opt/nms-agent`, grants `cap_net_raw` (ICMP without root), writes `/etc/nms-agent/agent.json`, and enables the service. Re-running it (without `--token`) upgrades in place and keeps the config and credentials. Passing `--token` again stores the new token but keeps working credentials; the agent only enrols with it if the API rejects its stored secret. Add `--re-enrol` to drop the credentials and enrol as a fresh agent.
 
 To install a binary you built yourself:
 ```bash
@@ -44,7 +44,7 @@ Expected within a few seconds: `Enrolled as agent …`, `Connected to https://�
 | Key | Meaning |
 |---|---|
 | `ApiBaseUrl` | API origin |
-| `EnrollmentToken` | Used once; ignored after `/var/lib/nms-agent/credentials` exists |
+| `EnrollmentToken` | Used when `/var/lib/nms-agent/credentials` is missing or the API rejects it (401); otherwise ignored |
 | `Name` | Display name reported to the portal |
 | `Interfaces` | Optional allow-list of interface names (empty = all up, non-loopback IPv4) |
 | `MaxConcurrentIcmp/Tcp/Http` | Probe concurrency (64 / 32 / 16) |
@@ -54,7 +54,7 @@ Check definitions never live on the agent; they are pushed from the API whenever
 
 ## Upgrade
 
-Publish a release in the portal (Settings → Agent releases) with the two download URLs and SHA-256 sums from CI. Every connected agent downloads, verifies, swaps the binary and restarts via systemd. Or re-run `install.sh`.
+Publish a release in the portal (Settings → Agent releases) with the two download URLs and SHA-256 sums from CI. Every connected agent downloads, verifies, swaps the binary and restarts via systemd. Or re-run `install.sh --base-url ...` on the host: do **not** pass the original `--token`, it was consumed at first enrolment.
 
 ## Uninstall
 
@@ -76,7 +76,8 @@ Revoke the agent in the portal as well so its secret is dead.
 
 | Symptom | Check |
 |---|---|
-| `Enrollment failed: 401` | Token expired or already used; re-issue in the portal and re-run install with `--token` |
+| `Enrollment token rejected by the API (...)` | Token expired, already used, or the agent is revoked; **Re-issue token** on the agent in the portal and re-run install with `--token <new token>` |
+| `API rejected the stored credentials and no EnrollmentToken is configured` | The agent's secret was revoked or re-issued server-side; re-issue a token and re-run install with `--token` |
 | `Raw ICMP socket denied` | `getcap /opt/nms-agent/nms-agent` should show `cap_net_raw+ep`; run `sudo setcap cap_net_raw+ep /opt/nms-agent/nms-agent` |
 | Agent Online but checks Unknown | No results uploaded yet; wait one interval, then `journalctl -u nms-agent | grep -i upload` |
 | Checks on another VLAN all Down in Trunked mode | `ip -4 addr` shows no address on that sub-interface, or the switch port is not trunking that VLAN |

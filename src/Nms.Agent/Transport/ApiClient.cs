@@ -27,6 +27,13 @@ public sealed class ApiClient
     public async Task<EnrollResponse> EnrollAsync(EnrollRequest req, CancellationToken ct)
     {
         using var resp = await _http.PostAsJsonAsync("api/agents/enroll", req, NmsJson.Options, ct);
+        if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            var reason = await resp.Content.ReadAsStringAsync(ct);
+            throw new EnrollmentRejectedException(
+                $"Enrollment token rejected by the API{(string.IsNullOrWhiteSpace(reason) ? "" : $" ({reason.Trim()})")}. " +
+                "Tokens are single-use and expire after 24 h: re-issue one for this agent in the portal and run install.sh --token <token>.");
+        }
         if (!resp.IsSuccessStatusCode)
             throw new InvalidOperationException($"Enrollment failed: {(int)resp.StatusCode} {await resp.Content.ReadAsStringAsync(ct)}");
         return (await resp.Content.ReadFromJsonAsync<EnrollResponse>(NmsJson.Options, ct))!;

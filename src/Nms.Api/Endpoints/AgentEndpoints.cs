@@ -21,10 +21,15 @@ public static class AgentEndpoints
             var hash = SecretHasher.Sha256(req.EnrollmentToken);
             var agent = await db.Agents.Include(a => a.Site).Include(a => a.Interfaces)
                 .FirstOrDefaultAsync(a => a.EnrollmentTokenHash == hash, ct);
-            if (agent is null || agent.EnrollmentTokenExpiresUtc < DateTimeOffset.UtcNow || agent.Status == AgentStatus.Revoked)
+            // Say why, on both sides: the agent logs the body and the operator otherwise only sees "401".
+            var reason = agent is null ? "unknown or already-used token"
+                : agent.Status == AgentStatus.Revoked ? "agent is revoked"
+                : agent.EnrollmentTokenExpiresUtc < DateTimeOffset.UtcNow ? "token expired"
+                : null;
+            if (agent is null || reason is not null)
             {
-                log.LogWarning("Enrollment rejected for host {Host}", req.Hostname);
-                return Results.Unauthorized();
+                log.LogWarning("Enrollment rejected for host {Host} ({AgentVersion}): {Reason}", req.Hostname, req.AgentVersion, reason);
+                return Results.Text(reason, statusCode: StatusCodes.Status401Unauthorized);
             }
 
             var secret = SecretHasher.NewToken(32);
