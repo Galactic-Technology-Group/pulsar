@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/out/
+**/TestResults/
+.git/
+.github/
+.vs/
+infra/
+deploy/
+docs/
+tests/
+*.md
