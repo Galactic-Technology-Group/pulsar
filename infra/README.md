@@ -41,6 +41,12 @@ az deployment group create -g rg-nms-dev -f infra/main.bicep -p infra/main.bicep
   -p apiImage=$ACR/Nms.Api:latest -p portalImage=$ACR/Nms.Portal:latest -p workerImage=$ACR/Nms.Worker:latest
 ```
 
+If the deployment fails with `The value of the 'Version' should be in: []`, Postgres Flexible Server provisioning is restricted in that region for your subscription. Check with the capabilities API and point `postgresLocation` at the paired region:
+
+```bash
+az rest --method get --url "https://management.azure.com/subscriptions/<sub>/providers/Microsoft.DBforPostgreSQL/locations/eastus2/capabilities?api-version=2024-08-01" --query "value[0].{reason:reason,versions:supportedServerVersions[].name}"
+```
+
 ## TimescaleDB
 
 The template allow-lists the extension (`azure.extensions = TIMESCALEDB`) and preloads it. The API runs `CREATE EXTENSION IF NOT EXISTS timescaledb` and creates the hypertable, compression, retention and the 5-minute continuous aggregate on first start (`src/Nms.Data/TimescaleSql.cs`). To do it by hand:

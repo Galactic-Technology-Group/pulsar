@@ -10,6 +10,9 @@ param env string = 'dev'
 @description('Azure region. Container Apps, Postgres Flexible and ACS Email must all be available there.')
 param location string = resourceGroup().location
 
+@description('Region for PostgreSQL. Defaults to location; override when Flexible Server provisioning is restricted there (use the paired region).')
+param postgresLocation string = location
+
 @description('Base name for resources.')
 @minLength(3)
 @maxLength(12)
@@ -88,7 +91,7 @@ module postgres 'modules/postgres.bicep' = {
   name: 'postgres'
   params: {
     name: 'pg-${name}-${take(suffix, 6)}'
-    location: location
+    location: postgresLocation
     tags: tags
     adminLogin: pgAdminLogin
     adminPassword: pgAdminPassword
@@ -144,6 +147,7 @@ var commonEnv = [
 
 module api 'modules/containerapp.bicep' = {
   name: 'ca-api'
+  dependsOn: [ secrets ]
   params: {
     name: 'ca-${name}-api'
     location: location
@@ -172,6 +176,7 @@ module api 'modules/containerapp.bicep' = {
 
 module portal 'modules/containerapp.bicep' = {
   name: 'ca-portal'
+  dependsOn: [ secrets ]
   params: {
     name: 'ca-${name}-portal'
     location: location
@@ -202,6 +207,7 @@ module portal 'modules/containerapp.bicep' = {
 
 module worker 'modules/containerapp.bicep' = {
   name: 'ca-worker'
+  dependsOn: [ secrets ]
   params: {
     name: 'ca-${name}-worker'
     location: location
