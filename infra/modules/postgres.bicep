@@ -7,12 +7,14 @@ param adminPassword string
 param databaseName string = 'nms'
 @description('Burstable B2s is enough for ~50 sites at 1-minute checks. Scale up when ingest exceeds ~500 rows/s.')
 param skuName string = 'Standard_B2s'
+@allowed([ 'Burstable', 'GeneralPurpose', 'MemoryOptimized' ])
+param tier string = 'Burstable'
 
-resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2023-12-01-preview' = {
+resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   name: name
   location: location
   tags: tags
-  sku: { name: skuName, tier: 'Burstable' }
+  sku: { name: skuName, tier: tier }
   properties: {
     version: '16'
     administratorLogin: adminLogin
@@ -25,28 +27,28 @@ resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2023-12-01-preview' =
 }
 
 // Allow Azure services (Container Apps consumption egress) to reach the server.
-resource allowAzure 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2023-12-01-preview' = {
+resource allowAzure 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2024-08-01' = {
   parent: server
   name: 'AllowAllAzureServicesAndResourcesWithinAzureIps'
   properties: { startIpAddress: '0.0.0.0', endIpAddress: '0.0.0.0' }
 }
 
 // Allow-list the TimescaleDB extension; CREATE EXTENSION is run by the API on first start.
-resource extensions 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2023-12-01-preview' = {
+resource extensions 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = {
   parent: server
   name: 'azure.extensions'
   properties: { value: 'TIMESCALEDB', source: 'user-override' }
   dependsOn: [ allowAzure ]
 }
 
-resource preload 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2023-12-01-preview' = {
+resource preload 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2024-08-01' = {
   parent: server
   name: 'shared_preload_libraries'
   properties: { value: 'timescaledb', source: 'user-override' }
   dependsOn: [ extensions ]
 }
 
-resource db 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2023-12-01-preview' = {
+resource db 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-01' = {
   parent: server
   name: databaseName
   properties: { charset: 'UTF8', collation: 'en_US.utf8' }

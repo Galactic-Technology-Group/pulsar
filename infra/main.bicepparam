@@ -2,8 +2,9 @@ using './main.bicep'
 
 param env = 'dev'
 param baseName = 'nms'
-// Postgres Flexible provisioning is restricted in East US on this subscription; East US 2 is its paired region.
-param postgresLocation = 'eastus2'
+// Postgres Flexible provisioning is restricted in East US on this subscription and Burstable
+// capacity was refused in East US 2 (SkuNotAvailable), so the database lives in Central US.
+param postgresLocation = 'centralus'
 param pgAdminLogin = 'nmsadmin'
 // Supply at deploy time:  -p pgAdminPassword=<strong password>
 param pgAdminPassword = readEnvironmentVariable('NMS_PG_PASSWORD', '')

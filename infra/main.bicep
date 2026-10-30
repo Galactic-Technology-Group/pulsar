@@ -13,6 +13,11 @@ param location string = resourceGroup().location
 @description('Region for PostgreSQL. Defaults to location; override when Flexible Server provisioning is restricted there (use the paired region).')
 param postgresLocation string = location
 
+@description('PostgreSQL compute SKU and tier. Burstable B2s is enough for dev; use GeneralPurpose for prod.')
+param pgSkuName string = 'Standard_B2s'
+@allowed([ 'Burstable', 'GeneralPurpose', 'MemoryOptimized' ])
+param pgTier string = 'Burstable'
+
 @description('Base name for resources.')
 @minLength(3)
 @maxLength(12)
@@ -96,6 +101,8 @@ module postgres 'modules/postgres.bicep' = {
     adminLogin: pgAdminLogin
     adminPassword: pgAdminPassword
     databaseName: 'nms'
+    skuName: pgSkuName
+    tier: pgTier
   }
 }
 
