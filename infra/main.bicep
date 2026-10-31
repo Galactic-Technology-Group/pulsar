@@ -17,6 +17,15 @@ param postgresLocation string = location
 param pgSkuName string = 'Standard_B2s'
 @allowed([ 'Burstable', 'GeneralPurpose', 'MemoryOptimized' ])
 param pgTier string = 'Burstable'
+@description('Point-in-time restore window. 7 for dev, 35 for prod.')
+@minValue(7)
+@maxValue(35)
+param pgBackupRetentionDays int = 7
+@description('Keep backups in the paired region as well. Cannot be changed after the server exists.')
+param pgGeoRedundantBackup bool = false
+@description('Standby replica. Disabled for dev; ZoneRedundant for prod when the budget allows.')
+@allowed([ 'Disabled', 'SameZone', 'ZoneRedundant' ])
+param pgHighAvailability string = 'Disabled'
 
 @description('Base name for resources.')
 @minLength(3)
@@ -108,6 +117,21 @@ module postgres 'modules/postgres.bicep' = {
     databaseName: 'nms'
     skuName: pgSkuName
     tier: pgTier
+    backupRetentionDays: pgBackupRetentionDays
+    geoRedundantBackup: pgGeoRedundantBackup
+    highAvailability: pgHighAvailability
+  }
+}
+
+// Portal Data Protection key ring: Blob-persisted, Key Vault-wrapped, so auth cookies survive
+// restarts and are valid on every replica.
+module storage 'modules/storage.bicep' = {
+  name: 'storage'
+  params: {
+    name: 'st${baseName}${env}${suffix}'
+    location: location
+    tags: tags
+    writerPrincipalId: identity.properties.principalId
   }
 }
 
@@ -215,6 +239,10 @@ module portal 'modules/containerapp.bicep' = {
       { name: 'AzureAd__ClientSecret', secretRef: 'portal-client-secret' }
       { name: 'Api__BaseUrl', value: 'https://${api.outputs.fqdn}' }
       { name: 'Api__Scope', value: 'api://${apiClientId}/access_as_user' }
+      { name: 'DataProtection__BlobUri', value: storage.outputs.dataProtectionBlobUri }
+      { name: 'DataProtection__KeyId', value: keyVault.outputs.dataProtectionKeyId }
+      // Tells ManagedIdentityCredential which user-assigned identity to use.
+      { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
     ])
   }
 }

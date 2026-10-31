@@ -9,6 +9,13 @@ param databaseName string = 'nms'
 param skuName string = 'Standard_B2s'
 @allowed([ 'Burstable', 'GeneralPurpose', 'MemoryOptimized' ])
 param tier string = 'Burstable'
+@minValue(7)
+@maxValue(35)
+param backupRetentionDays int = 7
+param geoRedundantBackup bool = false
+@description('ZoneRedundant needs a GeneralPurpose/MemoryOptimized tier and roughly doubles the compute cost.')
+@allowed([ 'Disabled', 'SameZone', 'ZoneRedundant' ])
+param highAvailability string = 'Disabled'
 
 resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   name: name
@@ -20,8 +27,8 @@ resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
     administratorLogin: adminLogin
     administratorLoginPassword: adminPassword
     storage: { storageSizeGB: 64, autoGrow: 'Enabled' }
-    backup: { backupRetentionDays: 7, geoRedundantBackup: 'Disabled' }
-    highAvailability: { mode: 'Disabled' }
+    backup: { backupRetentionDays: backupRetentionDays, geoRedundantBackup: geoRedundantBackup ? 'Enabled' : 'Disabled' }
+    highAvailability: { mode: highAvailability }
     network: { publicNetworkAccess: 'Enabled' }
   }
 }

@@ -27,7 +27,7 @@ Site (LAN, behind NAT)                        Azure
 | `tests/` | xUnit tests |
 | `infra/` | Bicep for the Azure environment |
 | `deploy/agent/` | `install.sh`, systemd unit, VLAN helper |
-| `docs/` | Architecture, VLAN setup, agent install, credential rotation register |
+| `docs/` | Architecture, VLAN setup, agent install, credential rotation register, production readiness checklist |
 
 ## Run locally
 
@@ -60,7 +60,7 @@ Run an agent against the local API (any Linux box or WSL):
 - **Transport**: one outbound SignalR connection for config pushes, commands (run check now, discovery, update) and heartbeats; results are uploaded in batches over plain HTTPS. Only outbound 443 is required.
 - **Store and forward**: results are written to a local SQLite outbox and deleted only after the API acknowledges them, so a WAN outage loses nothing (up to 500k results).
 - **State machine**: `Up → Degraded → Down` after `FailureThreshold` consecutive failures, `Up` again on the first success. Incidents open on Down and close on recovery. Replayed old results never flap current state.
-- **Agent offline is its own alert**: the worker marks an agent Offline after 3 missed heartbeats and opens a single "site unreachable" incident. Device incidents raised while the agent is offline, during a maintenance window, or for non-critical devices are recorded but not notified.
+- **Agent offline is its own alert**: the worker marks an agent Offline after 6 missed heartbeats (3 minutes at the default 30 s interval, so a short WAN blip does not page anyone) and opens a single "site unreachable" incident. Device incidents raised while the agent is offline, during a maintenance window, or for non-critical devices are recorded but not notified.
 - **Notifications**: incidents are batched into one email / Teams card per channel per minute; recoveries are sent too. Rules route by site, tag or globally, with per-rule cooldown.
 - **Multi-VLAN**: *Routed* mode probes other VLANs via the gateway. *Trunked* mode gives the agent 802.1Q sub-interfaces (`eth0.10`, …); each probe binds to the interface whose subnet or VLAN id matches the device, and discovery can sweep a VLAN at L2. See `docs/vlan-setup.md`.
 - **History**: `check_results` is a Timescale hypertable (1-day chunks, compressed after 7 days, dropped after 90). The portal charts come from a 5-minute continuous aggregate.

@@ -1,13 +1,19 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Identity.Client;
+using Microsoft.Identity.Web;
 using Nms.Data.Entities;
 using Nms.Shared.Contracts;
 
 namespace Nms.Portal.Services;
 
-/// <summary>Typed client for the management API. Entities are deserialised with cycles ignored.</summary>
-public sealed class NmsApiClient(HttpClient http)
+/// <summary>
+/// Typed client for the management API. Entities are deserialised with cycles ignored. When the API token cannot be
+/// acquired silently (portal restarted, consent needed) the challenge is handed to Microsoft.Identity.Web's consent
+/// handler, which redirects the browser through Entra and back to the same page.
+/// </summary>
+public sealed class NmsApiClient(HttpClient http, IServiceProvider services)
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -29,20 +35,20 @@ public sealed class NmsApiClient(HttpClient http)
     public Task<AgentCreated> ReissueTokenAsync(Guid agentId) => Post<AgentCreated>($"api/agents/{agentId}/reissue-token", new { });
     public Task RevokeAgentAsync(Guid agentId) => PostNoContent($"api/agents/{agentId}/revoke");
     public Task DeleteAgentAsync(Guid agentId) => Delete($"api/agents/{agentId}");
-    public async Task<Guid> StartDiscoveryAsync(Guid agentId, string cidr, int? vlanId)
+    public Task<Guid> StartDiscoveryAsync(Guid agentId, string cidr, int? vlanId) => Challengeable(async () =>
     {
         var resp = await http.PostAsJsonAsync($"api/agents/{agentId}/discover", new DiscoveryRequest(Guid.Empty, cidr, vlanId), Json);
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>(Json);
         return body.GetProperty("requestId").GetGuid();
-    }
-    public async Task<DiscoveryResult?> GetDiscoveryAsync(Guid requestId)
+    });
+    public Task<DiscoveryResult?> GetDiscoveryAsync(Guid requestId) => Challengeable(async () =>
     {
         var resp = await http.GetAsync($"api/discoveries/{requestId}");
         if (resp.StatusCode == System.Net.HttpStatusCode.Accepted) return null;
         resp.EnsureSuccessStatusCode();
         return await resp.Content.ReadFromJsonAsync<DiscoveryResult>(Json);
-    }
+    });
 
     // Devices & checks
     public Task<List<Device>> GetDevicesAsync(Guid siteId) => Get<List<Device>>($"api/sites/{siteId}/devices");
@@ -80,28 +86,39 @@ public sealed class NmsApiClient(HttpClient http)
     public Task<AgentRelease> ImportReleaseAsync(string? tag) => Post<AgentRelease>("api/releases/import", new ReleaseImportRequest(tag));
 
     // ---- helpers ----
-    private async Task<T> Get<T>(string url) => (await http.GetFromJsonAsync<T>(url, Json))!;
-    private async Task<T?> GetOrNull<T>(string url) where T : class
+    private Task<T> Get<T>(string url) => Challengeable(async () => (await http.GetFromJsonAsync<T>(url, Json))!);
+    private Task<T?> GetOrNull<T>(string url) where T : class => Challengeable(async () =>
     {
         using var resp = await http.GetAsync(url);
-        if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        if (resp.StatusCode == System.Net.HttpStatusCode.NotFound) return (T?)null;
         resp.EnsureSuccessStatusCode();
         return await resp.Content.ReadFromJsonAsync<T>(Json);
-    }
-    private async Task<T> Post<T>(string url, object body)
+    });
+    private Task<T> Post<T>(string url, object body) => Challengeable(async () =>
     {
         using var resp = await http.PostAsJsonAsync(url, body, Json);
         await Ensure(resp);
         return (await resp.Content.ReadFromJsonAsync<T>(Json))!;
-    }
-    private async Task<T> Put<T>(string url, object body)
+    });
+    private Task<T> Put<T>(string url, object body) => Challengeable(async () =>
     {
         using var resp = await http.PutAsJsonAsync(url, body, Json);
         await Ensure(resp);
         return (await resp.Content.ReadFromJsonAsync<T>(Json))!;
+    });
+    private Task PostNoContent(string url) => Challengeable(async () => { using var resp = await http.PostAsync(url, null); await Ensure(resp); return 0; });
+    private Task Delete(string url) => Challengeable(async () => { using var resp = await http.DeleteAsync(url); await Ensure(resp); return 0; });
+
+    /// <summary>Runs an API call; a token-acquisition challenge is routed to the consent handler (a redirect) and rethrown.</summary>
+    private async Task<T> Challengeable<T>(Func<Task<T>> call)
+    {
+        try { return await call(); }
+        catch (Exception ex) when (ex is MicrosoftIdentityWebChallengeUserException or MsalUiRequiredException)
+        {
+            services.GetService<MicrosoftIdentityConsentAndConditionalAccessHandler>()?.HandleException(ex);
+            throw;
+        }
     }
-    private async Task PostNoContent(string url) { using var resp = await http.PostAsync(url, null); await Ensure(resp); }
-    private async Task Delete(string url) { using var resp = await http.DeleteAsync(url); await Ensure(resp); }
     private static async Task Ensure(HttpResponseMessage resp)
     {
         if (resp.IsSuccessStatusCode) return;
