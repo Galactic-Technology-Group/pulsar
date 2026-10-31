@@ -73,7 +73,11 @@ az deployment group what-if -g rg-nms-dev -f infra/main.bicep -p infra/main.bice
 
 ## Cost notes (dev)
 
-B2s Postgres and a Basic registry are the only always-on charges of note; Container Apps consumption with min replicas 1 for three small apps stays low. Log Analytics retention is 30 days. Use `-p env=prod` with a larger `skuName` on the Postgres module when the fleet grows.
+B2s Postgres and a Basic registry are the only always-on charges of note; Container Apps consumption with min replicas 1 for three small apps stays low. Log Analytics retention is 30 days. The storage account that holds the portal's Data Protection key ring costs cents.
+
+## Production
+
+`main.prod.bicepparam` targets a separate resource group with its own Entra app registrations and env file: GeneralPurpose `Standard_D2ds_v4` Postgres, 35-day geo-redundant backups, HA off until the budget allows `ZoneRedundant`. Geo-redundant backup cannot be toggled after the server exists, so decide before the first prod deploy. The checklist for everything around the deployment is in `docs/production-readiness.md`.
 
 ## Redeploying: the secret parameters are mandatory
 
