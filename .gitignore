@@ -11,3 +11,4 @@ TestResults/
 appsettings.*.local.json
 .env
 *.pfx
+*.env.local
