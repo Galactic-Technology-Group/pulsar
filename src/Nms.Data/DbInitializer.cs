@@ -14,6 +14,8 @@ public static class DbInitializer
         var log = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DbInitializer");
 
         await db.Database.MigrateAsync(ct);
+        var added = await InternetLine.EnsureForAllSitesAsync(db, ct);
+        if (added > 0) log.LogInformation("Added the built-in Internet line to {Count} site(s)", added);
 
         try
         {

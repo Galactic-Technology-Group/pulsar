@@ -23,7 +23,9 @@ builder.Services.AddSingleton<ApiClient>();
 builder.Services.AddSingleton<EnrollmentService>();
 builder.Services.AddSingleton<SelfUpdater>();
 builder.Services.AddSingleton<DiscoveryService>();
-builder.Services.AddSingleton<IProbe, IcmpProbe>();
+builder.Services.AddSingleton<IcmpProbe>();
+builder.Services.AddSingleton<IProbe>(sp => sp.GetRequiredService<IcmpProbe>());
+builder.Services.AddSingleton<IProbe, InternetProbe>();   // WAN cross-check, built on IcmpProbe
 builder.Services.AddSingleton<IProbe, TcpProbe>();
 builder.Services.AddSingleton<IProbe, HttpProbe>();
 builder.Services.AddSingleton<CheckScheduler>();

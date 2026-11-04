@@ -96,6 +96,26 @@ public class ResultIngestTests
         Assert.Empty(db.CheckResults);
     }
 
+    [Fact]
+    public async Task Internet_line_failures_open_an_InternetDown_incident_named_after_the_site()
+    {
+        var (db, siteId, agentId, _) = await Seed();
+        var line = InternetLine.Create(siteId);
+        db.Devices.Add(line); await db.SaveChangesAsync();
+        var check = line.Checks.Single();
+        var svc = Svc(db);
+        var t = DateTimeOffset.UtcNow.AddMinutes(-5);
+
+        await svc.IngestAsync(agentId, siteId, [R(check.Id, t, false), R(check.Id, t.AddSeconds(30), false), R(check.Id, t.AddSeconds(60), false)], default);
+        var inc = await db.Incidents.SingleAsync();
+        Assert.Equal(IncidentKind.InternetDown, inc.Kind);
+        Assert.Equal("Internet line at A is DOWN", inc.Summary);
+        Assert.False(inc.Notified);
+
+        await svc.IngestAsync(agentId, siteId, [R(check.Id, t.AddSeconds(90), true)], default);
+        Assert.NotNull((await db.Incidents.SingleAsync()).ClosedUtc);
+    }
+
     private static CheckResultDto R(Guid checkId, DateTimeOffset t, bool ok) => new(checkId, t, ok, ok ? 5 : null, ok ? null : "TimedOut");
 
     /// <summary>IHubContext stand-in that swallows every broadcast.</summary>

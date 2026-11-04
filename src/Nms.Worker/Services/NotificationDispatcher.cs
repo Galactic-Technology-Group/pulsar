@@ -35,11 +35,12 @@ public sealed class NotificationDispatcher(
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<NmsDbContext>();
         var digestCutoff = DateTimeOffset.UtcNow.AddSeconds(-options.Value.DigestWindowSec);
+        var graceCutoff = DateTimeOffset.UtcNow.AddSeconds(-options.Value.RecoveryGraceSec);
 
         var pendingDown = await db.Incidents
             .Where(i => !i.Notified && i.ClosedUtc == null && i.OpenedUtc <= digestCutoff).OrderBy(i => i.OpenedUtc).Take(500).ToListAsync(ct);
         var pendingRecovery = await db.Incidents
-            .Where(i => i.Notified && !i.RecoveryNotified && i.ClosedUtc != null).OrderBy(i => i.ClosedUtc).Take(500).ToListAsync(ct);
+            .Where(i => i.Notified && !i.RecoveryNotified && i.ClosedUtc != null && i.ClosedUtc <= graceCutoff).OrderBy(i => i.ClosedUtc).Take(500).ToListAsync(ct);
         // Incidents that opened and closed inside the digest window never bother anyone.
         var flaps = await db.Incidents.Where(i => !i.Notified && i.ClosedUtc != null).ToListAsync(ct);
         foreach (var f in flaps) { f.Notified = true; f.RecoveryNotified = true; }
@@ -62,7 +63,15 @@ public sealed class NotificationDispatcher(
                 var device = i.CheckId is { } cid && devices.TryGetValue(cid, out var d) ? d : null;
                 var targets = await router.ResolveAsync(db, i, device, ct);
                 var siteName = sites.GetValueOrDefault(i.SiteId, "unknown site");
-                var text = isRecovery ? i.Summary.Replace("is DOWN", "recovered").Replace("is OFFLINE", "is back online") : i.Summary;
+                if (isRecovery && i.Kind == IncidentKind.AgentOffline && !i.Summary.Contains("cross-check:"))
+                {
+                    // The agent is back and has replayed its buffered WAN probes: say whether the site's line was down.
+                    var verdict = await CrossCheckAsync(db, i, ct);
+                    if (verdict is not null) i.Summary += $"; cross-check: {verdict.Text}";
+                }
+                var text = isRecovery
+                    ? i.Summary.Replace("is DOWN", "recovered").Replace("is OFFLINE (site may be unreachable)", "is back online").Replace("is OFFLINE", "is back online")
+                    : i.Summary;
                 foreach (var t in targets)
                 {
                     if (!perChannel.TryGetValue(t.Channel.Id, out var entry)) perChannel[t.Channel.Id] = entry = (t.Channel, new List<NotificationLine>());
@@ -83,5 +92,19 @@ public sealed class NotificationDispatcher(
                 catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "Send to {Channel} failed; incidents marked notified to avoid a retry storm", channel.Name); }
             }
         }
+    }
+
+    /// <summary>Classifies an AgentOffline gap from the site's Internet-line samples; null when the site has no Internet check.</summary>
+    private static async Task<CrossCheckVerdict?> CrossCheckAsync(NmsDbContext db, Incident i, CancellationToken ct)
+    {
+        if (i.ClosedUtc is null) return null;
+        var checkIds = await db.Checks.AsNoTracking().Where(c => c.Type == CheckType.Internet && c.Device.SiteId == i.SiteId).Select(c => c.Id).ToListAsync(ct);
+        if (checkIds.Count == 0) return null;
+        var from = i.OpenedUtc.AddSeconds(-InternetLine.IntervalSec);
+        var to = i.ClosedUtc.Value.AddSeconds(InternetLine.IntervalSec);
+        var samples = await db.CheckResults.AsNoTracking()
+            .Where(r => checkIds.Contains(r.CheckId) && r.Time >= from && r.Time <= to)
+            .OrderBy(r => r.Time).Select(r => new { r.Time, r.Ok }).ToListAsync(ct);
+        return OfflineCrossCheck.Classify(samples.Select(s => (s.Time, s.Ok)).ToList());
     }
 }

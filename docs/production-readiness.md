@@ -33,7 +33,7 @@ infrastructure already do, what is done per environment by hand, and what is sti
 - [ ] Create the site and agent in the portal, copy the token, run `install.sh --api <url> --token <token>` (see `docs/agent-install.md`). Confirm the agent shows Online and the right version.
 - [ ] Add devices and checks; mark the ones that should page as *critical*. Give the site a maintenance window for its patch night.
 - [ ] Routed or trunked VLAN mode decided and documented for the site (`docs/vlan-setup.md`).
-- [ ] Pull the site's WAN for 5 minutes: expect one "agent offline" alert after 3 minutes, its recovery, and no device-down flood.
+- [ ] Pull the site's WAN for 5 minutes: expect one "agent offline" alert after 3 minutes, its recovery annotated `internet line was DOWN`, and no device-down flood. The Internet-line check needs agent 0.2.0 or later.
 
 ## Open before go-live
 

@@ -39,6 +39,7 @@ public sealed class CheckScheduler : IDisposable
             [CheckType.TcpPort] = new SemaphoreSlim(options.Value.MaxConcurrentTcp),
             [CheckType.Http] = new SemaphoreSlim(options.Value.MaxConcurrentHttp),
         };
+        _limits[CheckType.Internet] = _limits[CheckType.Icmp];
     }
 
     public void ApplyConfig(AgentConfigDto cfg)
@@ -86,6 +87,12 @@ public sealed class CheckScheduler : IDisposable
     private async Task ExecuteAsync(CheckDefinition def, CancellationToken ct)
     {
         if (!_probes.TryGetValue(def.Type, out var probe)) return;
+        if (def.Type == CheckType.Internet)
+        {
+            // The probe resolves its own target list and always goes out the default route.
+            await RunProbeAsync(def, probe, IPAddress.None, null, ct);
+            return;
+        }
         if (!IPAddress.TryParse(def.TargetAddress, out var target))
         {
             try
@@ -102,6 +109,11 @@ public sealed class CheckScheduler : IDisposable
         }
 
         var source = SourceInterfaceResolver.Resolve(CurrentConfig?.VlanMode ?? VlanMode.Routed, def.VlanId, target, Interfaces());
+        await RunProbeAsync(def, probe, target, source, ct);
+    }
+
+    private async Task RunProbeAsync(CheckDefinition def, IProbe probe, IPAddress target, IPAddress? source, CancellationToken ct)
+    {
         var limit = _limits[def.Type];
         await limit.WaitAsync(ct);
         try

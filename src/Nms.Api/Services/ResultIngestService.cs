@@ -20,7 +20,7 @@ public sealed class ResultIngestService(NmsDbContext db, IHubContext<PortalHub, 
         if (results.Count == 0) return new ResultsAck(0, 0);
 
         var checkIds = results.Select(r => r.CheckId).Distinct().ToList();
-        var checks = await db.Checks.Include(c => c.Device)
+        var checks = await db.Checks.Include(c => c.Device).ThenInclude(d => d.Site)
             .Where(c => checkIds.Contains(c.Id) && c.Device.SiteId == siteId)
             .ToDictionaryAsync(c => c.Id, ct);
 
@@ -37,7 +37,7 @@ public sealed class ResultIngestService(NmsDbContext db, IHubContext<PortalHub, 
         var now = DateTimeOffset.UtcNow;
         int accepted = 0, duplicates = 0;
         var openIncidents = await db.Incidents
-            .Where(i => i.Kind == IncidentKind.CheckDown && i.ClosedUtc == null && i.CheckId != null && checkIds.Contains(i.CheckId.Value))
+            .Where(i => (i.Kind == IncidentKind.CheckDown || i.Kind == IncidentKind.InternetDown) && i.ClosedUtc == null && i.CheckId != null && checkIds.Contains(i.CheckId.Value))
             .ToDictionaryAsync(i => i.CheckId!.Value, ct);
         var agentOffline = await db.Incidents.AnyAsync(i => i.Kind == IncidentKind.AgentOffline && i.AgentId == agentId && i.ClosedUtc == null, ct);
         var maintenance = await db.MaintenanceWindows
@@ -72,10 +72,14 @@ public sealed class ResultIngestService(NmsDbContext db, IHubContext<PortalHub, 
             var inMaintenance = maintenance.Any(m => m.DeviceId == check.DeviceId || (m.DeviceId == null && m.SiteId == siteId));
             if (t.WentDown && !openIncidents.ContainsKey(check.Id))
             {
+                var internet = check.Type == CheckType.Internet;
                 var inc = new Incident
                 {
-                    Id = Guid.NewGuid(), Kind = IncidentKind.CheckDown, SiteId = siteId, CheckId = check.Id, AgentId = agentId,
-                    OpenedUtc = at, Summary = $"{check.Device.Name} ({check.Device.Address}) {check.Type}{(check.Port is null ? "" : ":" + check.Port)} is DOWN",
+                    Id = Guid.NewGuid(), Kind = internet ? IncidentKind.InternetDown : IncidentKind.CheckDown, SiteId = siteId, CheckId = check.Id, AgentId = agentId,
+                    OpenedUtc = at,
+                    Summary = internet
+                        ? $"Internet line at {check.Device.Site.Name} is DOWN"
+                        : $"{check.Device.Name} ({check.Device.Address}) {check.Type}{(check.Port is null ? "" : ":" + check.Port)} is DOWN",
                     // Suppressed alerts are recorded but marked already-notified so the worker skips them.
                     Notified = agentOffline || inMaintenance || !check.Device.IsCritical,
                 };

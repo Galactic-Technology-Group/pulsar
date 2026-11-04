@@ -25,7 +25,7 @@ Run it once per environment before go-live and after any change to the worker or
    | +10 s | Message is queued at ACS / posted to Teams |
 
 5. **Recovery**: edit the device and change the address to something that answers (the site gateway). The next successful probe closes the incident; within about 70 s you receive **RECOVERED: …**.
-6. **Agent offline** (optional, tests the site-unreachable path): on the agent host run `sudo systemctl stop nms-agent`. After 3 minutes (6 missed 30 s heartbeats) an `AgentOffline` incident opens and one message is sent; device checks stay quiet. `systemctl start nms-agent` closes it and sends the recovery.
+6. **Agent offline** (optional, tests the site-unreachable path): on the agent host run `sudo systemctl stop nms-agent`. After 3 minutes (6 missed 30 s heartbeats) an `AgentOffline` incident opens and one message is sent; device checks stay quiet. `systemctl start nms-agent` closes it and, 30 s later, sends a recovery that ends with the cross-check verdict, here `internet line stayed UP (...)` because only the agent was stopped. Pulling the site's WAN instead gives `internet line was DOWN hh:mm-hh:mm UTC`, and powering the host off gives `no WAN probe data for the gap`.
 7. Delete the `alert-test` device afterwards. Keep the channel and rule.
 
 ## What to check if nothing arrives

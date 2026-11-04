@@ -82,6 +82,32 @@ else
         </section>
     }
 
+    @if (internet is not null)
+    {
+        var ic = internet.Checks.FirstOrDefault(c => c.Type == CheckType.Internet);
+        <section class="card">
+            <h3>Internet line <small class="muted">WAN cross-check from the agent</small></h3>
+            <p>
+                @if (ic is null) { <span class="muted">no Internet check</span> }
+                else
+                {
+                    <StateBadge State="ic.State" />
+                    <span>@(ic.LastLatencyMs is null ? "" : $"{ic.LastLatencyMs} ms")</span>
+                    <span class="muted small">every @ic.IntervalSec s, down after @ic.FailureThreshold failures, last result @Ago(ic.LastResultUtc)</span>
+                    @if (!ic.Enabled) { <span class="muted">(disabled)</span> }
+                }
+                · <a href="devices/@internet.Id">history</a>
+            </p>
+            <AuthorizeView Roles="Nms.Admin,Nms.Operator">
+                <div class="form-row">
+                    <label>Targets <input @bind="internetTargets" placeholder="1.1.1.1, 8.8.8.8, 9.9.9.9" style="min-width:22em" /></label>
+                    <button class="small" @onclick="SaveInternetTargets" disabled="@(string.IsNullOrWhiteSpace(internetTargets) || internetTargets == internet.Address)">Save</button>
+                    <span class="muted small">The line counts as up while any target answers. When an agent goes offline, its replayed probes say whether this line was down.</span>
+                </div>
+            </AuthorizeView>
+        </section>
+    }
+
     <section class="card">
         <h3>Devices</h3>
         <AuthorizeView Roles="Nms.Admin,Nms.Operator">
@@ -98,7 +124,7 @@ else
         <table class="grid">
             <thead><tr><th>Device</th><th>Address</th><th>VLAN</th><th>Checks</th><th>Tags</th></tr></thead>
             <tbody>
-            @foreach (var d in devices.OrderBy(d => Worst(d)).ThenBy(d => d.Name))
+            @foreach (var d in devices.Where(d => d.Kind == DeviceKind.Host).OrderBy(d => Worst(d)).ThenBy(d => d.Name))
             {
                 <tr class="@(d.IsCritical ? "" : "muted")">
                     <td><a href="devices/@d.Id">@d.Name</a>@(d.IsCritical ? "" : " (non-critical)")</td>
@@ -118,6 +144,8 @@ else
     private Site? site;
     private List<Agent> agents = new();
     private List<Device> devices = new();
+    private Device? internet;
+    private string internetTargets = "";
     private string newAgentName = "";
     private AgentCreated? token;
     private DeviceForm dev = new();
@@ -140,6 +168,20 @@ else
         site = await Api.GetSiteAsync(SiteId);
         agents = await Api.GetAgentsAsync(SiteId);
         devices = await Api.GetDevicesAsync(SiteId);
+        internet = devices.FirstOrDefault(d => d.Kind == DeviceKind.InternetLine);
+        if (internet is not null && string.IsNullOrWhiteSpace(internetTargets)) internetTargets = internet.Address;
+    }
+    private async Task SaveInternetTargets()
+    {
+        if (internet is null) return;
+        error = null;
+        try
+        {
+            await Api.UpdateDeviceAsync(internet.Id, new DeviceInput(internet.Name, internetTargets, null, internet.IsCritical, internet.Tags, internet.Notes));
+            devices = await Api.GetDevicesAsync(SiteId);
+            internet = devices.FirstOrDefault(d => d.Kind == DeviceKind.InternetLine);
+        }
+        catch (ApiException ex) { error = ex.Message; }
     }
     private async Task OnChanged() { await Load(); await InvokeAsync(StateHasChanged); }
     public void Dispose() => Live.Changed -= OnChanged;

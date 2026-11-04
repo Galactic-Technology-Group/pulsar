@@ -364,6 +364,10 @@ namespace Nms.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_critical");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")

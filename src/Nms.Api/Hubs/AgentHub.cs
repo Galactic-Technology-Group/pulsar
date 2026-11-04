@@ -47,6 +47,7 @@ public sealed class AgentHub(NmsDbContext db, AgentRegistry registry, AgentConfi
         var agentId = Context.User!.AgentId();
         var agent = await db.Agents.Include(a => a.Interfaces).FirstAsync(a => a.Id == agentId);
         agent.LastSeenUtc = DateTimeOffset.UtcNow;
+        var versionChanged = agent.Version != hb.AgentVersion;
         agent.Version = hb.AgentVersion;
         if (agent.Status != AgentStatus.Online)
         {
@@ -55,6 +56,12 @@ public sealed class AgentHub(NmsDbContext db, AgentRegistry registry, AgentConfi
         }
         UpsertInterfaces(db, agent, hb.Interfaces);
         await db.SaveChangesAsync();
+
+        // The config an agent fetched on connect was built from the version it reported last time. After a
+        // self-update the first heartbeat carries the new version, so rebuild now: that is how an agent that just
+        // became 0.2.0 receives the Internet-line check without waiting for the next site change.
+        if (versionChanged)
+            await Clients.Caller.ConfigUpdated(await configBuilder.BuildAsync(agentId, Context.ConnectionAborted));
 
         // Agents that were offline when a release was published catch up here; the agent backs off on its own
         // if the download or hash check fails, so repeating this every heartbeat is safe.

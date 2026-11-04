@@ -7,6 +7,11 @@ public sealed class WorkerOptions
     /// <summary>Incidents opened within this window are batched into one message per channel.</summary>
     public int DigestWindowSec { get; set; } = 60;
     /// <summary>
+    /// Recoveries wait this long after the incident closes before they are sent, so an agent that just reconnected
+    /// has replayed its buffered Internet-line results and the AgentOffline recovery can say why the site was gone.
+    /// </summary>
+    public int RecoveryGraceSec { get; set; } = 30;
+    /// <summary>
     /// An agent is Offline when no heartbeat for this many heartbeat intervals. With 30 s heartbeats, 6 means a site is
     /// declared unreachable after 3 minutes: a dropped SignalR socket costs the agent up to ~90 s to notice and reconnect
     /// through its backoff, so anything under that alerts on ordinary WAN blips.

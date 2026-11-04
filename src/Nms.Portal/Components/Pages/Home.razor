@@ -27,10 +27,14 @@ else
     <div class="tiles">
         @foreach (var s in sites)
         {
-            var worst = s.AgentsTotal > 0 && s.AgentsOnline == 0 ? "offline" : s.Down > 0 ? "down" : s.Degraded > 0 ? "degraded" : "up";
+            var worst = s.AgentsTotal > 0 && s.AgentsOnline == 0 ? "offline" : s.Down > 0 || s.Internet == CheckState.Down ? "down" : s.Degraded > 0 || s.Internet == CheckState.Degraded ? "degraded" : "up";
             <a class="tile @worst" href="sites/@s.Id">
                 <div class="title">@s.Name</div>
                 <div class="row"><span>@s.Devices devices</span><span>@s.AgentsOnline/@s.AgentsTotal agents</span></div>
+                @if (s.Internet is not null)
+                {
+                    <div class="row counts"><span>Internet line</span><span class="@InternetCss(s.Internet)">@InternetText(s)</span></div>
+                }
                 <div class="row counts">
                     <span class="up">@s.Up up</span>
                     <span class="down">@s.Down down</span>
@@ -54,6 +58,14 @@ else
     }
 
     private async Task Load() => sites = await Api.GetDashboardAsync();
+    private static string InternetCss(CheckState? st) => st switch { CheckState.Up => "up", CheckState.Down => "down", CheckState.Degraded => "degraded", _ => "unknown" };
+    private static string InternetText(SiteSummary s) => s.Internet switch
+    {
+        CheckState.Up => s.InternetLatencyMs is null ? "up" : $"up · {s.InternetLatencyMs} ms",
+        CheckState.Down => "DOWN",
+        CheckState.Degraded => "degraded",
+        _ => "no data yet",
+    };
     private async Task OnChanged() { await Load(); await InvokeAsync(StateHasChanged); }
     public void Dispose() => Live.Changed -= OnChanged;
 }
