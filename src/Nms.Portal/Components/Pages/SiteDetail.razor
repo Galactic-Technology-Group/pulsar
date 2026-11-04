@@ -86,14 +86,14 @@ else
     {
         var gc = gateway.Checks.FirstOrDefault(c => c.Type == CheckType.GatewayPing);
         <section class="card">
-            <h3>Gateway <small class="muted">probed from Azure, outside the site</small></h3>
+            <h3>Gateway <small class="muted">TCP reachability probed from Azure, outside the site</small></h3>
             <p>
                 @if (string.IsNullOrEmpty(gateway.Address)) { <span class="muted">No public address set: the agent-offline alert cannot say whether the site's line is down.</span> }
                 else if (gc is null) { <span class="muted">no gateway check</span> }
                 else
                 {
                     <StateBadge State="gc.State" />
-                    <span>@gateway.Address @(gc.Port is null ? "(ICMP)" : $"(tcp/{gc.Port})") @(gc.LastLatencyMs is null ? "" : $"{gc.LastLatencyMs} ms")</span>
+                    <span>@gateway.Address @(gc.Port is null ? "(ICMP, needs Worker:GatewayIcmpEnabled)" : $"(tcp/{gc.Port})") @(gc.LastLatencyMs is null ? "" : $"{gc.LastLatencyMs} ms")</span>
                     <span class="muted small">every @gc.IntervalSec s, down after @gc.FailureThreshold failures, last probe @Ago(gc.LastResultUtc)</span>
                     @if (!gc.Enabled) { <span class="muted">(disabled)</span> }
                     <text> · </text><a href="devices/@gateway.Id">history</a>
@@ -102,9 +102,9 @@ else
             <AuthorizeView Roles="Nms.Admin,Nms.Operator">
                 <div class="form-row">
                     <label>Public address <input @bind="gatewayAddress" placeholder="203.0.113.1 or site.example.com" style="min-width:18em" /></label>
-                    <label>TCP port <input type="number" @bind="gatewayPort" placeholder="ICMP" style="width:6em" /></label>
-                    <button class="small" @onclick="SaveGateway" disabled="@(gatewayAddress == gateway.Address && gatewayPort == gc?.Port)">Save</button>
-                    <span class="muted small">Leave the port blank to ping; set one (443, 22, …) when the firewall drops ICMP. A refused connection still counts as reachable.</span>
+                    <label>TCP port <input type="number" @bind="gatewayPort" placeholder="443" style="width:6em" /></label>
+                    <button class="small" @onclick="SaveGateway" disabled="@(gatewayPort is null || gatewayAddress == gateway.Address && gatewayPort == gc?.Port)">Save</button>
+                    <span class="muted small">Azure cannot ping outward, so the worker opens a TCP connection instead: a reply or a refusal both count as reachable, silence does not. Pick a port the gateway answers on from the internet (HTTPS admin, SSL-VPN, SSH).</span>
                 </div>
             </AuthorizeView>
         </section>

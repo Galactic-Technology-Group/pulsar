@@ -33,7 +33,7 @@ else
                 <div class="row"><span>@s.Devices devices</span><span>@s.AgentsOnline/@s.AgentsTotal agents</span></div>
                 @if (s.Gateway is not null)
                 {
-                    <div class="row counts"><span>Gateway from Azure</span><span class="@GatewayCss(s)">@GatewayText(s)</span></div>
+                    <div class="row counts"><span>Gateway (TCP from Azure)</span><span class="@GatewayCss(s)">@GatewayText(s)</span></div>
                 }
                 <div class="row counts">
                     <span class="up">@s.Up up</span>

@@ -8,7 +8,8 @@ namespace Nms.Data;
 /// Every site gets one built-in "Gateway" device: the site's public address, probed by the worker from Azure rather
 /// than by the agent. It is the outside-in cross-check for an agent-offline alert: gateway unreachable means the
 /// site's WAN is down; gateway answering means the agent host or its LAN is the problem.
-/// The address is empty until an operator fills it in; the check stays Unknown until then.
+/// The probe is a TCP connect (default port 443): Azure's outbound path does not carry ICMP, and a SYN-ACK or a RST
+/// both prove the gateway answers. The address is empty until an operator fills it in; the check stays Unknown until then.
 /// </summary>
 public static class GatewayCheck
 {
@@ -17,6 +18,8 @@ public static class GatewayCheck
     public const int IntervalSec = 30;
     public const int TimeoutMs = 2000;
     public const int FailureThreshold = 3;
+    /// <summary>Default TCP port. HTTPS management or SSL-VPN is the port most gateways already expose.</summary>
+    public const int DefaultPort = 443;
     /// <summary>Results written by the worker carry this in place of an agent id.</summary>
     public static readonly Guid AzureProbeId = Guid.Empty;
 
@@ -24,7 +27,7 @@ public static class GatewayCheck
     {
         Id = Guid.NewGuid(), SiteId = siteId, Kind = DeviceKind.Gateway, Name = DeviceName, Address = "",
         IsCritical = true, Tags = [Tag],
-        Checks = { new Check { Id = Guid.NewGuid(), Type = CheckType.GatewayPing, IntervalSec = IntervalSec, TimeoutMs = TimeoutMs, FailureThreshold = FailureThreshold } },
+        Checks = { new Check { Id = Guid.NewGuid(), Type = CheckType.GatewayPing, Port = DefaultPort, IntervalSec = IntervalSec, TimeoutMs = TimeoutMs, FailureThreshold = FailureThreshold } },
     };
 
     /// <summary>Adds the built-in device to sites that predate it. Idempotent; run at API start.</summary>

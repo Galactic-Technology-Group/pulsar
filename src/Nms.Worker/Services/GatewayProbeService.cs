@@ -19,8 +19,10 @@ public interface IGatewayPinger
 }
 
 /// <summary>
-/// ICMP echo from the worker's own network, or, when a port is set, a TCP connect where a refused connection still
-/// proves the host answers. ICMP needs CAP_NET_RAW in the container (the worker Dockerfile grants it to dotnet).
+/// TCP connect to the gateway's port, where a refused connection still proves the host answers; or, when no port is
+/// set and <see cref="WorkerOptions.GatewayIcmpEnabled"/> allows it, an ICMP echo. ICMP needs CAP_NET_RAW in the
+/// container (the worker Dockerfile grants it to dotnet) and an outbound path that returns echo replies, which Azure
+/// Container Apps does not have.
 /// </summary>
 public sealed class IcmpGatewayPinger : IGatewayPinger
 {
@@ -100,6 +102,18 @@ public sealed class GatewayProbeService(IServiceScopeFactory scopes, IGatewayPin
         var due = await db.Checks.Include(c => c.Device).ThenInclude(d => d.Site)
             .Where(c => c.Type == CheckType.GatewayPing && c.Enabled && c.Device.Kind == DeviceKind.Gateway && c.Device.Address != "")
             .ToListAsync(ct);
+        // No port means ICMP, which only works where the worker's egress returns echo replies (not on Container Apps).
+        if (!options.Value.GatewayIcmpEnabled)
+        {
+            var icmp = due.Where(c => c.Port is null).ToList();
+            if (icmp.Count > 0 && now - _lastUnavailableLog > TimeSpan.FromMinutes(10))
+            {
+                _lastUnavailableLog = now;
+                log.LogWarning("{Count} gateway check(s) have no TCP port and ICMP is disabled (Worker:GatewayIcmpEnabled); they stay Unknown: {Sites}",
+                    icmp.Count, string.Join(", ", icmp.Select(c => c.Device.Site.Name)));
+            }
+            due = due.Where(c => c.Port is not null).ToList();
+        }
         // A check is due when its interval has elapsed since its last sample (one second of slack so a 30 s interval runs every pass that lands on it).
         due = due.Where(c => c.LastResultUtc is null || c.LastResultUtc.Value.AddSeconds(c.IntervalSec - 1) <= now).ToList();
         if (due.Count == 0) return;

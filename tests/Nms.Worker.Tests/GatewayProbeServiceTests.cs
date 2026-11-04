@@ -66,6 +66,7 @@ public class GatewayProbeServiceTests
             var inc = await db.Incidents.SingleAsync();
             Assert.Equal(IncidentKind.GatewayDown, inc.Kind);
             Assert.Equal("Gateway 203.0.113.1 at Branch is DOWN from Azure", inc.Summary);
+            Assert.All(pinger.Calls, c => Assert.Equal(GatewayCheck.DefaultPort, c.port));
             Assert.False(inc.Notified);
             Assert.Equal(CheckState.Down, (await db.Checks.SingleAsync()).State);
             Assert.Equal(3, await db.CheckResults.CountAsync());
@@ -103,6 +104,27 @@ public class GatewayProbeServiceTests
         Assert.Equal(CheckState.Unknown, (await db.Checks.SingleAsync()).State);
         Assert.Empty(db.CheckResults);
         Assert.Empty(db.Incidents);
+    }
+
+    [Fact]
+    public async Task Gateway_without_a_port_is_skipped_unless_icmp_is_enabled()
+    {
+        var (sp, _, checkId) = Setup();
+        using (var scope = sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NmsDbContext>();
+            (await db.Checks.SingleAsync(c => c.Id == checkId)).Port = null;
+            await db.SaveChangesAsync();
+        }
+        var pinger = new FakePinger();
+        await Service(sp, pinger).RunOnceAsync(CancellationToken.None);
+        Assert.Empty(pinger.Calls);
+
+        var icmp = new GatewayProbeService(sp.GetRequiredService<IServiceScopeFactory>(), pinger,
+            Options.Create(new WorkerOptions { GatewayIcmpEnabled = true }), NullLogger<GatewayProbeService>.Instance);
+        await icmp.RunOnceAsync(CancellationToken.None);
+        Assert.Single(pinger.Calls);
+        Assert.Null(pinger.Calls[0].port);
     }
 
     [Fact]
