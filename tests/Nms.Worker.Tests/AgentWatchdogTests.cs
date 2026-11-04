@@ -67,6 +67,32 @@ public class AgentWatchdogTests
         Assert.NotNull((await vdb.Incidents.SingleAsync()).ClosedUtc);
     }
 
+    [Theory]
+    [InlineData(CheckState.Down, "site WAN is down")]
+    [InlineData(CheckState.Up, "agent host or LAN problem")]
+    [InlineData(CheckState.Unknown, "site may be unreachable")]
+    public async Task Offline_summary_carries_the_gateway_state(CheckState gatewayState, string expected)
+    {
+        var (sp, agentId) = Setup(DateTimeOffset.UtcNow.AddSeconds(-120));
+        using (var scope = sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NmsDbContext>();
+            var siteId = (await db.Agents.SingleAsync()).SiteId;
+            var gw = GatewayCheck.Create(siteId);
+            gw.Address = "203.0.113.1";
+            gw.Checks.Single().State = gatewayState;
+            db.Devices.Add(gw);
+            await db.SaveChangesAsync();
+        }
+
+        await Watchdog(sp).RunOnceAsync(CancellationToken.None);
+
+        using var verify = sp.CreateScope();
+        var inc = await verify.ServiceProvider.GetRequiredService<NmsDbContext>().Incidents.SingleAsync(i => i.AgentId == agentId);
+        Assert.Contains(expected, inc.Summary);
+        Assert.False(inc.Notified);
+    }
+
     [Fact]
     public async Task Within_three_intervals_is_not_stale()
     {

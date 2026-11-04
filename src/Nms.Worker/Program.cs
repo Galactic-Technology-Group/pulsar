@@ -12,12 +12,14 @@ builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email
 builder.Services.AddHttpClient("teams", c => c.Timeout = TimeSpan.FromSeconds(15));
 
 builder.Services.AddSingleton<AlertRouter>();
+builder.Services.AddSingleton<IGatewayPinger, IcmpGatewayPinger>();
 builder.Services.AddSingleton<ISecretResolver, ConfigurationSecretResolver>();
 builder.Services.AddSingleton<INotificationSender, EmailSender>();
 builder.Services.AddSingleton<INotificationSender, TeamsWebhookSender>();
 
 builder.Services.AddHostedService<NotificationDispatcher>();
 builder.Services.AddHostedService<AgentWatchdog>();
+builder.Services.AddHostedService<GatewayProbeService>();
 builder.Services.AddHostedService<RetentionJob>();
 
 var host = builder.Build();

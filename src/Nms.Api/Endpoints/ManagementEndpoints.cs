@@ -28,8 +28,8 @@ public static class ManagementEndpoints
                 .GroupBy(c => new { c.Device.SiteId, c.State })
                 .Select(g => new { g.Key.SiteId, g.Key.State, Count = g.Count() }).ToListAsync(ct);
             var deviceCount = await db.Devices.AsNoTracking().Where(d => d.Kind == DeviceKind.Host).GroupBy(d => d.SiteId).Select(g => new { SiteId = g.Key, Count = g.Count() }).ToListAsync(ct);
-            var internet = await db.Checks.AsNoTracking().Where(c => c.Type == CheckType.Internet && c.Enabled && c.Device.Kind == DeviceKind.InternetLine)
-                .Select(c => new { c.Device.SiteId, c.DeviceId, c.State, c.LastLatencyMs }).ToListAsync(ct);
+            var gateway = await db.Checks.AsNoTracking().Where(c => c.Type == CheckType.GatewayPing && c.Enabled && c.Device.Kind == DeviceKind.Gateway)
+                .Select(c => new { c.Device.SiteId, c.DeviceId, c.State, c.LastLatencyMs, c.Device.Address }).ToListAsync(ct);
             var agents = await db.Agents.AsNoTracking().GroupBy(a => a.SiteId)
                 .Select(g => new { SiteId = g.Key, Total = g.Count(), Online = g.Count(a => a.Status == AgentStatus.Online) }).ToListAsync(ct);
             var incidents = await db.Incidents.AsNoTracking().Where(i => i.ClosedUtc == null).GroupBy(i => i.SiteId).Select(g => new { SiteId = g.Key, Count = g.Count() }).ToListAsync(ct);
@@ -40,7 +40,8 @@ public static class ManagementEndpoints
                 C(s.Id, CheckState.Up), C(s.Id, CheckState.Down), C(s.Id, CheckState.Degraded), C(s.Id, CheckState.Unknown),
                 agents.FirstOrDefault(x => x.SiteId == s.Id)?.Online ?? 0, agents.FirstOrDefault(x => x.SiteId == s.Id)?.Total ?? 0,
                 incidents.FirstOrDefault(x => x.SiteId == s.Id)?.Count ?? 0,
-                internet.FirstOrDefault(x => x.SiteId == s.Id)?.State, internet.FirstOrDefault(x => x.SiteId == s.Id)?.LastLatencyMs, internet.FirstOrDefault(x => x.SiteId == s.Id)?.DeviceId));
+                gateway.FirstOrDefault(x => x.SiteId == s.Id)?.State, gateway.FirstOrDefault(x => x.SiteId == s.Id)?.LastLatencyMs,
+                gateway.FirstOrDefault(x => x.SiteId == s.Id)?.DeviceId, gateway.FirstOrDefault(x => x.SiteId == s.Id)?.Address));
         });
 
         // ---- Sites -----------------------------------------------------------------------------
@@ -51,7 +52,7 @@ public static class ManagementEndpoints
         {
             var s = new Site { Id = Guid.NewGuid(), Name = input.Name.Trim(), TimeZone = input.TimeZone, VlanMode = input.VlanMode };
             db.Sites.Add(s);
-            db.Devices.Add(InternetLine.Create(s.Id));   // built-in WAN cross-check
+            db.Devices.Add(GatewayCheck.Create(s.Id));   // built-in outside-in cross-check, address set later
             await db.SaveChangesAsync();
             return Results.Created($"/api/sites/{s.Id}", s);
         });
@@ -138,7 +139,7 @@ public static class ManagementEndpoints
         write.MapDelete("/devices/{id:guid}", async (Guid id, NmsDbContext db, AgentConfigBuilder cfg) =>
         {
             var d = await db.Devices.FindAsync(id); if (d is null) return Results.NotFound();
-            if (d.Kind == DeviceKind.InternetLine) return Results.BadRequest(new { error = "The Internet line is built in; disable its check instead of deleting it." });
+            if (d.Kind == DeviceKind.Gateway) return Results.BadRequest(new { error = "The Gateway device is built in; clear its address or disable its check instead of deleting it." });
             db.Devices.Remove(d); await db.SaveChangesAsync(); await cfg.NotifySiteChangedAsync(d.SiteId);
             return Results.NoContent();
         });

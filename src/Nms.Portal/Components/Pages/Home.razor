@@ -27,13 +27,13 @@ else
     <div class="tiles">
         @foreach (var s in sites)
         {
-            var worst = s.AgentsTotal > 0 && s.AgentsOnline == 0 ? "offline" : s.Down > 0 || s.Internet == CheckState.Down ? "down" : s.Degraded > 0 || s.Internet == CheckState.Degraded ? "degraded" : "up";
+            var worst = s.AgentsTotal > 0 && s.AgentsOnline == 0 ? "offline" : s.Down > 0 || s.Gateway == CheckState.Down ? "down" : s.Degraded > 0 || s.Gateway == CheckState.Degraded ? "degraded" : "up";
             <a class="tile @worst" href="sites/@s.Id">
                 <div class="title">@s.Name</div>
                 <div class="row"><span>@s.Devices devices</span><span>@s.AgentsOnline/@s.AgentsTotal agents</span></div>
-                @if (s.Internet is not null)
+                @if (s.Gateway is not null)
                 {
-                    <div class="row counts"><span>Internet line</span><span class="@InternetCss(s.Internet)">@InternetText(s)</span></div>
+                    <div class="row counts"><span>Gateway from Azure</span><span class="@GatewayCss(s)">@GatewayText(s)</span></div>
                 }
                 <div class="row counts">
                     <span class="up">@s.Up up</span>
@@ -58,11 +58,11 @@ else
     }
 
     private async Task Load() => sites = await Api.GetDashboardAsync();
-    private static string InternetCss(CheckState? st) => st switch { CheckState.Up => "up", CheckState.Down => "down", CheckState.Degraded => "degraded", _ => "unknown" };
-    private static string InternetText(SiteSummary s) => s.Internet switch
+    private static string GatewayCss(SiteSummary s) => s.Gateway switch { CheckState.Up => "up", CheckState.Down => "down", CheckState.Degraded => "degraded", _ => "unknown" };
+    private static string GatewayText(SiteSummary s) => string.IsNullOrEmpty(s.GatewayAddress) ? "address not set" : s.Gateway switch
     {
-        CheckState.Up => s.InternetLatencyMs is null ? "up" : $"up · {s.InternetLatencyMs} ms",
-        CheckState.Down => "DOWN",
+        CheckState.Up => s.GatewayLatencyMs is null ? "reachable" : $"reachable · {s.GatewayLatencyMs} ms",
+        CheckState.Down => "UNREACHABLE",
         CheckState.Degraded => "degraded",
         _ => "no data yet",
     };

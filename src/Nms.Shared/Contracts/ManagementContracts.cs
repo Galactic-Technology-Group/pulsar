@@ -15,8 +15,8 @@ public sealed record MaintenanceInput(Guid? SiteId, Guid? DeviceId, DateTimeOffs
 public sealed record ReleaseInput(string Version, string DownloadUrlX64, string DownloadUrlArm64, string Sha256X64, string Sha256Arm64, bool IsCurrent = true);
 /// <summary>Publish a CI-built GitHub release; <c>Tag</c> null means the latest release.</summary>
 public sealed record ReleaseImportRequest(string? Tag);
-/// <summary>Device and check counts exclude the built-in Internet line, which is reported separately.</summary>
+/// <summary>Device and check counts exclude the built-in Gateway device, whose Azure-side probe is reported separately.</summary>
 public sealed record SiteSummary(Guid Id, string Name, int Devices, int Up, int Down, int Degraded, int Unknown, int AgentsOnline, int AgentsTotal, int OpenIncidents,
-    CheckState? Internet = null, int? InternetLatencyMs = null, Guid? InternetDeviceId = null);
+    CheckState? Gateway = null, int? GatewayLatencyMs = null, Guid? GatewayDeviceId = null, string? GatewayAddress = null);
 public sealed record LatencyPoint(DateTimeOffset Bucket, long Samples, long OkSamples, double? AvgLatencyMs, int? MaxLatencyMs);
 

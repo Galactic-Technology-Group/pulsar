@@ -97,23 +97,15 @@ public class ResultIngestTests
     }
 
     [Fact]
-    public async Task Internet_line_failures_open_an_InternetDown_incident_named_after_the_site()
+    public async Task Suppressed_incident_never_sends_a_recovery_either()
     {
-        var (db, siteId, agentId, _) = await Seed();
-        var line = InternetLine.Create(siteId);
-        db.Devices.Add(line); await db.SaveChangesAsync();
-        var check = line.Checks.Single();
+        var (db, siteId, agentId, check) = await Seed(critical: false);
         var svc = Svc(db);
-        var t = DateTimeOffset.UtcNow.AddMinutes(-5);
-
-        await svc.IngestAsync(agentId, siteId, [R(check.Id, t, false), R(check.Id, t.AddSeconds(30), false), R(check.Id, t.AddSeconds(60), false)], default);
+        var t = DateTimeOffset.UtcNow;
+        await svc.IngestAsync(agentId, siteId, [R(check.Id, t, false), R(check.Id, t.AddSeconds(1), false), R(check.Id, t.AddSeconds(2), false)], default);
         var inc = await db.Incidents.SingleAsync();
-        Assert.Equal(IncidentKind.InternetDown, inc.Kind);
-        Assert.Equal("Internet line at A is DOWN", inc.Summary);
-        Assert.False(inc.Notified);
-
-        await svc.IngestAsync(agentId, siteId, [R(check.Id, t.AddSeconds(90), true)], default);
-        Assert.NotNull((await db.Incidents.SingleAsync()).ClosedUtc);
+        Assert.True(inc.Notified);
+        Assert.True(inc.RecoveryNotified);
     }
 
     private static CheckResultDto R(Guid checkId, DateTimeOffset t, bool ok) => new(checkId, t, ok, ok ? 5 : null, ok ? null : "TimedOut");

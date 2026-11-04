@@ -11,15 +11,13 @@ namespace Nms.Api.Services;
 /// <summary>Builds the check list for an agent (all enabled checks at its site) and pushes it on change.</summary>
 public sealed class AgentConfigBuilder(NmsDbContext db, IHubContext<AgentHub, IAgentClient> agents)
 {
-    public static readonly Version InternetCheckMinAgentVersion = new(0, 2, 0);
 
     public async Task<AgentConfigDto> BuildAsync(Guid agentId, CancellationToken ct)
     {
         var agent = await db.Agents.AsNoTracking().Include(a => a.Site).FirstAsync(a => a.Id == agentId, ct);
-        // Agents older than 0.2.0 do not know CheckType.Internet and would reject the whole config (enums travel as strings).
-        var internetCapable = Version.TryParse(agent.Version, out var v) && v >= InternetCheckMinAgentVersion;
+        // GatewayPing is run by the worker from Azure; agents never see it (and could not parse the enum value).
         var checks = await db.Checks.AsNoTracking()
-            .Where(c => c.Device.SiteId == agent.SiteId && c.Enabled && (internetCapable || c.Type != CheckType.Internet))
+            .Where(c => c.Device.SiteId == agent.SiteId && c.Enabled && c.Type != CheckType.GatewayPing)
             .Select(c => new CheckDefinition(c.Id, c.DeviceId, c.Device.Name, c.Device.Address, c.Device.VlanId, c.Type,
                 c.Port, c.HttpPath, c.ExpectedHttpStatus, c.BodyRegex, c.IntervalSec, c.TimeoutMs, c.Enabled))
             .ToListAsync(ct);

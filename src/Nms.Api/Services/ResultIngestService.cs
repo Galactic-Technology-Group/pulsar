@@ -21,7 +21,7 @@ public sealed class ResultIngestService(NmsDbContext db, IHubContext<PortalHub, 
 
         var checkIds = results.Select(r => r.CheckId).Distinct().ToList();
         var checks = await db.Checks.Include(c => c.Device).ThenInclude(d => d.Site)
-            .Where(c => checkIds.Contains(c.Id) && c.Device.SiteId == siteId)
+            .Where(c => checkIds.Contains(c.Id) && c.Device.SiteId == siteId && c.Type != CheckType.GatewayPing)   // gateway samples come from the worker only
             .ToDictionaryAsync(c => c.Id, ct);
 
         // Dedupe against what already exists for these (check, time) pairs. Timescale compressed chunks
@@ -37,7 +37,7 @@ public sealed class ResultIngestService(NmsDbContext db, IHubContext<PortalHub, 
         var now = DateTimeOffset.UtcNow;
         int accepted = 0, duplicates = 0;
         var openIncidents = await db.Incidents
-            .Where(i => (i.Kind == IncidentKind.CheckDown || i.Kind == IncidentKind.InternetDown) && i.ClosedUtc == null && i.CheckId != null && checkIds.Contains(i.CheckId.Value))
+            .Where(i => i.Kind == IncidentKind.CheckDown && i.ClosedUtc == null && i.CheckId != null && checkIds.Contains(i.CheckId.Value))
             .ToDictionaryAsync(i => i.CheckId!.Value, ct);
         var agentOffline = await db.Incidents.AnyAsync(i => i.Kind == IncidentKind.AgentOffline && i.AgentId == agentId && i.ClosedUtc == null, ct);
         var maintenance = await db.MaintenanceWindows
@@ -72,16 +72,13 @@ public sealed class ResultIngestService(NmsDbContext db, IHubContext<PortalHub, 
             var inMaintenance = maintenance.Any(m => m.DeviceId == check.DeviceId || (m.DeviceId == null && m.SiteId == siteId));
             if (t.WentDown && !openIncidents.ContainsKey(check.Id))
             {
-                var internet = check.Type == CheckType.Internet;
+                var suppressed = agentOffline || inMaintenance || !check.Device.IsCritical;
                 var inc = new Incident
                 {
-                    Id = Guid.NewGuid(), Kind = internet ? IncidentKind.InternetDown : IncidentKind.CheckDown, SiteId = siteId, CheckId = check.Id, AgentId = agentId,
-                    OpenedUtc = at,
-                    Summary = internet
-                        ? $"Internet line at {check.Device.Site.Name} is DOWN"
-                        : $"{check.Device.Name} ({check.Device.Address}) {check.Type}{(check.Port is null ? "" : ":" + check.Port)} is DOWN",
-                    // Suppressed alerts are recorded but marked already-notified so the worker skips them.
-                    Notified = agentOffline || inMaintenance || !check.Device.IsCritical,
+                    Id = Guid.NewGuid(), Kind = IncidentKind.CheckDown, SiteId = siteId, CheckId = check.Id, AgentId = agentId,
+                    OpenedUtc = at, Summary = $"{check.Device.Name} ({check.Device.Address}) {check.Type}{(check.Port is null ? "" : ":" + check.Port)} is DOWN",
+                    // Suppressed alerts are recorded but marked already-notified (down and recovery) so the worker skips them.
+                    Notified = suppressed, RecoveryNotified = suppressed,
                 };
                 db.Incidents.Add(inc);
                 openIncidents[check.Id] = inc;

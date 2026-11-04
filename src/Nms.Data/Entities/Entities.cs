@@ -59,7 +59,7 @@ public class Device
     public bool IsCritical { get; set; } = true;
     public string[] Tags { get; set; } = Array.Empty<string>();
     public string? Notes { get; set; }
-    /// <summary>InternetLine devices are created with the site; their Address is the list of public targets.</summary>
+    /// <summary>Gateway devices are created with the site; their Address is the site's public IP or hostname, probed from Azure.</summary>
     public DeviceKind Kind { get; set; } = DeviceKind.Host;
     public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;
     public ICollection<Check> Checks { get; set; } = new List<Check>();

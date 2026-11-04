@@ -63,15 +63,14 @@ public sealed class NotificationDispatcher(
                 var device = i.CheckId is { } cid && devices.TryGetValue(cid, out var d) ? d : null;
                 var targets = await router.ResolveAsync(db, i, device, ct);
                 var siteName = sites.GetValueOrDefault(i.SiteId, "unknown site");
-                if (isRecovery && i.Kind == IncidentKind.AgentOffline && !i.Summary.Contains("cross-check:"))
+                string text;
+                if (!isRecovery) text = i.Summary;
+                else
                 {
-                    // The agent is back and has replayed its buffered WAN probes: say whether the site's line was down.
-                    var verdict = await CrossCheckAsync(db, i, ct);
-                    if (verdict is not null) i.Summary += $"; cross-check: {verdict.Text}";
+                    // An agent that is back gets its gap explained from the gateway probes Azure took meanwhile.
+                    var verdict = i.Kind == IncidentKind.AgentOffline ? await CrossCheckAsync(db, i, ct) : null;
+                    text = RecoveryText(i, verdict);
                 }
-                var text = isRecovery
-                    ? i.Summary.Replace("is DOWN", "recovered").Replace("is OFFLINE (site may be unreachable)", "is back online").Replace("is OFFLINE", "is back online")
-                    : i.Summary;
                 foreach (var t in targets)
                 {
                     if (!perChannel.TryGetValue(t.Channel.Id, out var entry)) perChannel[t.Channel.Id] = entry = (t.Channel, new List<NotificationLine>());
@@ -94,14 +93,24 @@ public sealed class NotificationDispatcher(
         }
     }
 
-    /// <summary>Classifies an AgentOffline gap from the site's Internet-line samples; null when the site has no Internet check.</summary>
+    /// <summary>Recovery wording per incident kind; the open-time summary is kept on the incident untouched.</summary>
+    internal static string RecoveryText(Incident i, CrossCheckVerdict? verdict) => i.Kind switch
+    {
+        IncidentKind.AgentOffline => i.Summary.Split(" is OFFLINE")[0] + " is back online" + (verdict is null ? "" : "; " + verdict.Text),
+        IncidentKind.GatewayDown => i.Summary.Replace("is DOWN from Azure", "is reachable again from Azure"),
+        _ => i.Summary.Replace("is DOWN", "recovered"),
+    };
+
+    /// <summary>Classifies an AgentOffline gap from the site's gateway probes; null when the site has no usable gateway check.</summary>
     private static async Task<CrossCheckVerdict?> CrossCheckAsync(NmsDbContext db, Incident i, CancellationToken ct)
     {
         if (i.ClosedUtc is null) return null;
-        var checkIds = await db.Checks.AsNoTracking().Where(c => c.Type == CheckType.Internet && c.Device.SiteId == i.SiteId).Select(c => c.Id).ToListAsync(ct);
+        var checkIds = await db.Checks.AsNoTracking()
+            .Where(c => c.Type == CheckType.GatewayPing && c.Enabled && c.Device.SiteId == i.SiteId && c.Device.Address != "")
+            .Select(c => c.Id).ToListAsync(ct);
         if (checkIds.Count == 0) return null;
-        var from = i.OpenedUtc.AddSeconds(-InternetLine.IntervalSec);
-        var to = i.ClosedUtc.Value.AddSeconds(InternetLine.IntervalSec);
+        var from = i.OpenedUtc.AddSeconds(-GatewayCheck.IntervalSec);
+        var to = i.ClosedUtc.Value.AddSeconds(GatewayCheck.IntervalSec);
         var samples = await db.CheckResults.AsNoTracking()
             .Where(r => checkIds.Contains(r.CheckId) && r.Time >= from && r.Time <= to)
             .OrderBy(r => r.Time).Select(r => new { r.Time, r.Ok }).ToListAsync(ct);

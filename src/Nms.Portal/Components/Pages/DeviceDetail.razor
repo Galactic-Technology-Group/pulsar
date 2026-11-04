@@ -19,7 +19,7 @@ else
             {
                 <tr class="@(selected?.Id == c.Id ? "selected" : "")" @onclick="() => Select(c)">
                     <td>@c.Type</td>
-                    <td>@(c.Type switch { CheckType.Icmp => "-", CheckType.Internet => device.Address, _ => $"{c.Port}{c.HttpPath}" })</td>
+                    <td>@(c.Type switch { CheckType.Icmp => "-", CheckType.GatewayPing => $"{device.Address} from Azure{(c.Port is null ? "" : $" tcp/{c.Port}")}", _ => $"{c.Port}{c.HttpPath}" })</td>
                     <td><StateBadge State="c.State" /></td>
                     <td>@(c.LastLatencyMs is null ? "-" : c.LastLatencyMs + " ms")</td>
                     <td>@c.IntervalSec s</td>
