@@ -4,7 +4,7 @@ The agent is a single static binary (`nms-agent`, .NET 8 self-contained) for `li
 
 ## Supported hosts
 
-- Ubuntu 22.04 / 24.04 (VM or bare metal), Debian 12
+- Ubuntu 22.04 / 24.04 / 26.04 (VM or bare metal), Debian 12
 - Raspberry Pi 4 or 5 with **64-bit** Raspberry Pi OS (Bookworm) or Ubuntu Server. 32-bit OS images are not supported.
 - 1 vCPU / 512 MB is plenty for 500 checks a minute.
 

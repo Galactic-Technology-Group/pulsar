@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Builds the Pulsar agent appliance ISO: stock Ubuntu Server 24.04 (amd64) + embedded autoinstall + agent payload.
+# Builds the Pulsar agent appliance ISO: stock Ubuntu Server 26.04 LTS (amd64) + embedded autoinstall + agent payload.
 #
 #   ./iso/build.sh --api-url https://nms-api.example.com --agent-dir ./out/linux-x64 [--out pulsar-agent.iso]
 #                  [--base-url <release download base>] [--password <console password, default "pulsar">]
-#                  [--ubuntu-iso <path to an already downloaded ubuntu-24.04.x-live-server-amd64.iso>]
+#                  [--ubuntu-iso <path to an already downloaded ubuntu-26.04.x-live-server-amd64.iso>]
 #
 # Needs: xorriso, curl, openssl, sha256sum (apt install xorriso). Runs on Linux (CI) or WSL. Output ~3 GB.
 # Boot it in any x64 VM (UEFI or BIOS): it installs hands-off and the agent shows an enrollment code.
 set -euo pipefail
 
-UBUNTU_VERSION="${UBUNTU_VERSION:-24.04.3}"
+# Point release to remaster. Override with UBUNTU_VERSION=26.04.2 (etc.) when Canonical publishes a newer one.
+UBUNTU_VERSION="${UBUNTU_VERSION:-26.04.1}"
 UBUNTU_URL="${UBUNTU_URL:-https://releases.ubuntu.com/${UBUNTU_VERSION%.*}/ubuntu-${UBUNTU_VERSION}-live-server-amd64.iso}"
 UBUNTU_SUMS="${UBUNTU_SUMS:-https://releases.ubuntu.com/${UBUNTU_VERSION%.*}/SHA256SUMS}"
 API_URL=""

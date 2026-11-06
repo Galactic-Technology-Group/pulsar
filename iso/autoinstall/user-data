@@ -1,5 +1,5 @@
 #cloud-config
-# Pulsar agent appliance: unattended Ubuntu Server 24.04 install.
+# Pulsar agent appliance: unattended Ubuntu Server 26.04 LTS install.
 # Placeholders (__API_URL__, __BASE_URL__, __PASSWORD_HASH__) are filled in by iso/build.sh.
 #
 # What you get: a minimal Ubuntu with the nms-agent service, the console banner service, unattended security
