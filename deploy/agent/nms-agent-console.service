@@ -1,0 +1,25 @@
+[Unit]
+Description=Pulsar agent console banner (enrollment code on tty1 and the login prompt)
+After=nms-agent.service
+Wants=nms-agent.service
+
+[Service]
+Type=simple
+ExecStart=/opt/nms-agent/nms-agent-console.sh
+Restart=always
+RestartSec=5
+# Root is required to write /dev/tty1 and /etc/issue.d; everything else is locked down.
+ProtectSystem=strict
+ReadWritePaths=/etc/issue.d
+ReadOnlyPaths=/var/lib/nms-agent /etc/nms-agent
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+DeviceAllow=/dev/tty1 rw
+DeviceAllow=char-tty rw
+
+[Install]
+WantedBy=multi-user.target

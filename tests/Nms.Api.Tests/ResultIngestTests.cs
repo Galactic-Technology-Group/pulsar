@@ -134,6 +134,7 @@ public class ResultIngestTests
             public Task CheckStateChanged(Guid siteId, Guid deviceId, Guid checkId, CheckState state, DateTimeOffset at) => Task.CompletedTask;
             public Task AgentStatusChanged(Guid siteId, Guid agentId, AgentStatus status, DateTimeOffset at) => Task.CompletedTask;
             public Task IncidentChanged(Guid incidentId, Guid siteId, bool open) => Task.CompletedTask;
+            public Task PendingClaimsChanged() => Task.CompletedTask;
         }
         private sealed class FakeGroups : IGroupManager
         {

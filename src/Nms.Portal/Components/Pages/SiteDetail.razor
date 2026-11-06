@@ -37,9 +37,10 @@ else
             </tbody>
         </table>
         <AuthorizeView Roles="Nms.Admin,Nms.Operator">
+            <p class="small muted">New appliances show an enrollment code on their console; approve it under <a href="agents/pending">Pending agents</a>. The token below is for scripted installs only.</p>
             <div class="form-row">
                 <input placeholder="New agent name" @bind="newAgentName" />
-                <button class="primary" @onclick="CreateAgent" disabled="@string.IsNullOrWhiteSpace(newAgentName)">Add agent</button>
+                <button class="primary" @onclick="CreateAgent" disabled="@string.IsNullOrWhiteSpace(newAgentName)">Add agent (token)</button>
             </div>
         </AuthorizeView>
         @if (token is not null)

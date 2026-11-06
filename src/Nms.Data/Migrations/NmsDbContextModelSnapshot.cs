@@ -89,6 +89,81 @@ namespace Nms.Data.Migrations
                     b.ToTable("agents", "nms");
                 });
 
+            modelBuilder.Entity("Nms.Data.Entities.AgentClaim", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AgentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agent_id");
+
+                    b.Property<string>("AgentVersion")
+                        .HasColumnType("text")
+                        .HasColumnName("agent_version");
+
+                    b.Property<string>("ApprovedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("approved_by");
+
+                    b.Property<DateTimeOffset?>("ApprovedUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approved_utc");
+
+                    b.Property<string>("ClaimKeyHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("claim_key_hash");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_utc");
+
+                    b.Property<DateTimeOffset>("ExpiresUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_utc");
+
+                    b.Property<string>("Hostname")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("hostname");
+
+                    b.Property<string>("InterfacesJson")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("interfaces_json");
+
+                    b.Property<string>("RemoteAddress")
+                        .HasColumnType("text")
+                        .HasColumnName("remote_address");
+
+                    b.Property<string>("RequestedName")
+                        .HasColumnType("text")
+                        .HasColumnName("requested_name");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer")
+                        .HasColumnName("state");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code");
+
+                    b.HasIndex("State", "ExpiresUtc");
+
+                    b.ToTable("agent_claims", "nms");
+                });
+
             modelBuilder.Entity("Nms.Data.Entities.AgentInterface", b =>
                 {
                     b.Property<Guid>("Id")

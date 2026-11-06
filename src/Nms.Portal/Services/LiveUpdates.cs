@@ -28,6 +28,7 @@ public sealed class LiveUpdates(IConfiguration config, IServiceProvider services
             _hub.On<Guid, Guid, Guid, CheckState, DateTimeOffset>(nameof(IPortalClient.CheckStateChanged), (_, _, _, _, _) => Raise());
             _hub.On<Guid, Guid, AgentStatus, DateTimeOffset>(nameof(IPortalClient.AgentStatusChanged), (_, _, _, _) => Raise());
             _hub.On<Guid, Guid, bool>(nameof(IPortalClient.IncidentChanged), (_, _, _) => Raise());
+            _hub.On(nameof(IPortalClient.PendingClaimsChanged), () => Raise());
             try { await _hub.StartAsync(); await _hub.SendAsync("SubscribeAll"); }
             catch (Exception ex) { log.LogWarning(ex, "Live updates unavailable"); }
         }

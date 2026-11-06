@@ -39,6 +39,32 @@ public sealed class ApiClient
         return (await resp.Content.ReadFromJsonAsync<EnrollResponse>(NmsJson.Options, ct))!;
     }
 
+    public async Task<ClaimCreated> CreateClaimAsync(ClaimRequest req, CancellationToken ct)
+    {
+        using var resp = await _http.PostAsJsonAsync("api/agents/claims", req, NmsJson.Options, ct);
+        if (!resp.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Claim request failed: {(int)resp.StatusCode} {await resp.Content.ReadAsStringAsync(ct)}");
+        return (await resp.Content.ReadFromJsonAsync<ClaimCreated>(NmsJson.Options, ct))!;
+    }
+
+    public enum ClaimPollOutcome { Pending, Approved, Gone }
+    public sealed record ClaimPoll(ClaimPollOutcome Outcome, EnrollResponse? Credentials = null);
+
+    /// <summary>200 = credentials, 202 = still waiting, 404/410 = the code is dead and a new claim is needed.</summary>
+    public async Task<ClaimPoll> PollClaimAsync(Guid claimId, string claimKey, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/agents/claims/{claimId}");
+        req.Headers.Add(ClaimAuth.ClaimKeyHeader, claimKey);
+        using var resp = await _http.SendAsync(req, ct);
+        return resp.StatusCode switch
+        {
+            System.Net.HttpStatusCode.OK => new ClaimPoll(ClaimPollOutcome.Approved, await resp.Content.ReadFromJsonAsync<EnrollResponse>(NmsJson.Options, ct)),
+            System.Net.HttpStatusCode.Accepted => new ClaimPoll(ClaimPollOutcome.Pending),
+            System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Gone => new ClaimPoll(ClaimPollOutcome.Gone),
+            _ => throw new InvalidOperationException($"Claim poll failed: {(int)resp.StatusCode} {await resp.Content.ReadAsStringAsync(ct)}"),
+        };
+    }
+
     public async Task<ResultsAck> PostResultsAsync(ResultsBatch batch, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, "api/results") { Content = JsonContent.Create(batch, options: NmsJson.Options) };

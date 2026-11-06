@@ -35,6 +35,9 @@ public sealed class NmsApiClient(HttpClient http, IServiceProvider services)
     public Task<AgentCreated> ReissueTokenAsync(Guid agentId) => Post<AgentCreated>($"api/agents/{agentId}/reissue-token", new { });
     public Task RevokeAgentAsync(Guid agentId) => PostNoContent($"api/agents/{agentId}/revoke");
     public Task DeleteAgentAsync(Guid agentId) => Delete($"api/agents/{agentId}");
+    public Task<List<PendingClaimDto>> GetPendingClaimsAsync() => Get<List<PendingClaimDto>>("api/claims");
+    public Task<Agent> ApproveClaimAsync(Guid claimId, ClaimApproveInput input) => Post<Agent>($"api/claims/{claimId}/approve", input);
+    public Task RejectClaimAsync(Guid claimId) => PostNoContent($"api/claims/{claimId}/reject");
     public Task<Guid> StartDiscoveryAsync(Guid agentId, string cidr, int? vlanId) => Challengeable(async () =>
     {
         var resp = await http.PostAsJsonAsync($"api/agents/{agentId}/discover", new DiscoveryRequest(Guid.Empty, cidr, vlanId), Json);

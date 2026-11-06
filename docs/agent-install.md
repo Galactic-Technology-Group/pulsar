@@ -8,20 +8,30 @@ The agent is a single static binary (`nms-agent`, .NET 8 self-contained) for `li
 - Raspberry Pi 4 or 5 with **64-bit** Raspberry Pi OS (Bookworm) or Ubuntu Server. 32-bit OS images are not supported.
 - 1 vCPU / 512 MB is plenty for 500 checks a minute.
 
-## Install
+## Three ways to get an agent onto a site
 
-1. In the portal open the site, **Add agent**, copy the enrollment token (valid 24 h, single use).
-2. On the host, with the release assets from CI (`install.sh`, `nms-agent.service`, binaries + `.sha256`):
+| Method | When | How the box gets its identity |
+|---|---|---|
+| **Appliance ISO** (x64 VM) | Default for virtual machines | Boot `pulsar-agent-amd64.iso`; see `iso/README.md`. Shows an enrollment code. |
+| **install.sh, claim code** | Existing Linux host or Pi | `install.sh --api-url …` with no token. Shows an enrollment code. |
+| **install.sh, token** | Scripted / RMM rollouts | `install.sh --api-url … --token …` with a token from the portal. No human step. |
+
+An **enrollment code** (for example `KD7P-4QRS`) is shown on the box's console, in the login prompt and in the journal. In the portal open **Pending agents**, find the code with its hostname and interfaces, pick the site and approve. The box collects its credentials within 5 seconds. Codes expire after 15 minutes and are replaced automatically; only the box that requested a code can collect against it, so seeing a code on a screen gives nobody access.
+
+## Install with install.sh
+
+On the host, with the release assets from CI (`install.sh`, `nms-agent.service`, `nms-agent-console.*`, binaries + `.sha256`):
 
 ```bash
-curl -fsSLO https://github.com/Galactic-Technology-Group/pulsar/releases/latest/download/install.sh
-curl -fsSLO https://github.com/Galactic-Technology-Group/pulsar/releases/latest/download/nms-agent.service
+base=https://github.com/Galactic-Technology-Group/pulsar/releases/latest/download
+for f in install.sh nms-agent.service nms-agent-console.sh nms-agent-console.service; do curl -fsSLO "$base/$f"; done
 chmod +x install.sh
-sudo ./install.sh --api-url https://nms-api.example.com --token <enrollment token> \
-  --base-url https://github.com/Galactic-Technology-Group/pulsar/releases/latest/download
+sudo ./install.sh --api-url https://nms-api.example.com --base-url "$base"          # then approve the code in the portal
+# or, scripted:
+sudo ./install.sh --api-url https://nms-api.example.com --base-url "$base" --token <enrollment token>
 ```
 
-The installer detects the architecture, verifies the SHA-256, creates the `nms-agent` user, installs to `/opt/nms-agent`, grants `cap_net_raw` (ICMP without root), writes `/etc/nms-agent/agent.json`, and enables the service. Re-running it (without `--token`) upgrades in place and keeps the config and credentials. Passing `--token` again stores the new token but keeps working credentials; the agent only enrols with it if the API rejects its stored secret. Add `--re-enrol` to drop the credentials and enrol as a fresh agent.
+The installer detects the architecture, verifies the SHA-256, creates the `nms-agent` user, installs to `/opt/nms-agent`, grants `cap_net_raw` (ICMP without root), writes `/etc/nms-agent/agent.json`, installs the console banner service, and enables everything. Re-running it (without `--token`) upgrades in place and keeps the config and credentials. Passing `--token` stores the token but keeps working credentials; the agent only enrols with it if the API rejects its stored secret. `--re-enrol` drops the credentials: with `--token` it enrols with the token, without it the box shows a new code. `--no-start` installs and enables without starting (used by image builds; implied inside a chroot).
 
 To install a binary you built yourself:
 ```bash
@@ -35,7 +45,7 @@ sudo ./deploy/agent/install.sh --local out/nms-agent --api-url ... --token ...
 systemctl status nms-agent
 journalctl -u nms-agent -f
 ```
-Expected within a few seconds: `Enrolled as agent …`, `Connected to https://…/hubs/agent`, `Applied config vN: K active checks`. The portal shows the agent Online with its interfaces.
+Expected within a few seconds: `ENROLLMENT CODE XXXX-XXXX` (claim mode, until approved) or `Enrolled as agent …`, then `Connected to https://…/hubs/agent`, `Applied config vN: K active checks`. The portal shows the agent Online with its interfaces. The current code is also in `/var/lib/nms-agent/claim-code` while a claim is pending.
 
 ## Configuration
 
@@ -44,7 +54,7 @@ Expected within a few seconds: `Enrolled as agent …`, `Connected to https://�
 | Key | Meaning |
 |---|---|
 | `ApiBaseUrl` | API origin |
-| `EnrollmentToken` | Used when `/var/lib/nms-agent/credentials` is missing or the API rejects it (401); otherwise ignored |
+| `EnrollmentToken` | Optional. Used when `/var/lib/nms-agent/credentials` is missing or the API rejects it (401); otherwise ignored. Absent = claim-code mode |
 | `Name` | Display name reported to the portal |
 | `Interfaces` | Optional allow-list of interface names (empty = all up, non-loopback IPv4) |
 | `MaxConcurrentIcmp/Tcp/Http` | Probe concurrency (64 / 32 / 16) |
@@ -79,7 +89,9 @@ Revoke the agent in the portal as well so its secret is dead.
 | Symptom | Check |
 |---|---|
 | `Enrollment token rejected by the API (...)` | Token expired, already used, or the agent is revoked; **Re-issue token** on the agent in the portal and re-run install with `--token <new token>` |
-| `API rejected the stored credentials and no EnrollmentToken is configured` | The agent's secret was revoked or re-issued server-side; re-issue a token and re-run install with `--token` |
+| `Stored credentials were rejected by the API; requesting a new claim code` | The agent was revoked or its secret re-issued; it is back on Pending agents with a new code, approve or reject it there |
+| Code shown but nothing on Pending agents | The box cannot reach the API: `curl -v https://<api>/healthz`; the code is only issued by the API, so a code on screen means the request did get through, check the portal is pointed at the same API |
+| `Claim flow error (...)` repeating | Outbound 443 blocked or wrong `ApiBaseUrl`; fix with `install.sh --api-url <url> --re-enrol` |
 | `Raw ICMP socket denied` | `getcap /opt/nms-agent/nms-agent` should show `cap_net_raw+ep`; run `sudo setcap cap_net_raw+ep /opt/nms-agent/nms-agent` |
 | Agent Online but checks Unknown | No results uploaded yet; wait one interval, then `journalctl -u nms-agent | grep -i upload` |
 | Checks on another VLAN all Down in Trunked mode | `ip -4 addr` shows no address on that sub-interface, or the switch port is not trunking that VLAN |

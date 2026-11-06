@@ -16,6 +16,7 @@ public class NmsDbContext(DbContextOptions<NmsDbContext> options) : DbContext(op
     public DbSet<AlertRule> AlertRules => Set<AlertRule>();
     public DbSet<MaintenanceWindow> MaintenanceWindows => Set<MaintenanceWindow>();
     public DbSet<AgentRelease> AgentReleases => Set<AgentRelease>();
+    public DbSet<AgentClaim> AgentClaims => Set<AgentClaim>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -72,6 +73,15 @@ public class NmsDbContext(DbContextOptions<NmsDbContext> options) : DbContext(op
         b.Entity<MaintenanceWindow>(e => e.HasIndex(x => new { x.StartUtc, x.EndUtc }));
 
         b.Entity<AgentRelease>(e => e.HasIndex(x => x.Version).IsUnique());
+
+        b.Entity<AgentClaim>(e =>
+        {
+            e.Property(x => x.Code).HasMaxLength(16);
+            e.Property(x => x.ClaimKeyHash).HasMaxLength(64);
+            e.Property(x => x.Hostname).HasMaxLength(255);
+            e.HasIndex(x => x.Code);
+            e.HasIndex(x => new { x.State, x.ExpiresUtc });
+        });
 
         // snake_case table and column names for Postgres friendliness
         foreach (var entity in b.Model.GetEntityTypes())

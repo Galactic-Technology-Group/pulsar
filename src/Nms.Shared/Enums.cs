@@ -21,3 +21,9 @@ public enum AlertScope { Global = 0, Site = 1, Tag = 2, Device = 3 }
 public enum VlanMode { Routed = 0, Trunked = 1 }
 
 public enum Role { Viewer = 0, Operator = 1, Admin = 2 }
+
+/// <summary>
+/// Lifecycle of a claim code shown on an unenrolled agent's console. Approved means an operator assigned it to a
+/// site; Collected means the agent has since fetched its credentials and the claim is finished.
+/// </summary>
+public enum ClaimState { Pending = 0, Approved = 1, Collected = 2, Rejected = 3, Expired = 4 }

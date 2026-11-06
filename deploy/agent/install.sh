@@ -1,29 +1,35 @@
 #!/usr/bin/env bash
 # Pulsar (Centralized NMS) agent installer. Idempotent; run as root.
 #
-#   sudo ./install.sh --api-url https://nms-api.example.com --token <enrollment token>
-#   sudo ./install.sh --api-url ... --token ... --base-url https://github.com/Galactic-Technology-Group/pulsar/releases/latest/download
+#   sudo ./install.sh --api-url https://nms-api.example.com                   # claim-code enrolment (default)
+#   sudo ./install.sh --api-url https://nms-api.example.com --token <token>   # scripted enrolment with a token
+#   sudo ./install.sh --api-url ... --base-url https://github.com/Galactic-Technology-Group/pulsar/releases/latest/download
 #   sudo ./install.sh --base-url ...               # upgrade in place; config and credentials are kept
-#   sudo ./install.sh --token <new token> --re-enrol  # drop stored credentials and enrol again (e.g. after a revoke)
+#   sudo ./install.sh --token <new token> --re-enrol  # drop stored credentials and enrol again with a token
+#   sudo ./install.sh --re-enrol                   # drop stored credentials and show a new claim code
 #   sudo ./install.sh --local ./nms-agent          # install a binary you built yourself
+#   sudo ./install.sh ... --no-start               # inside an image build (chroot): install and enable, don't start
 #
-# Re-running with --token never discards working credentials: the agent only uses the token when the API
-# rejects its stored secret. Pass --re-enrol to force it. Env overrides: BASE_URL.
+# Without --token the agent shows an ENROLLMENT CODE on the console and in the journal; approve it in the portal
+# under Pending agents. Re-running with --token never discards working credentials: the agent only uses the token
+# when the API rejects its stored secret. Pass --re-enrol to force it. Env overrides: BASE_URL.
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-https://example.invalid/releases/latest}"
 API_URL=""
 TOKEN=""
 REENROL=0
+NOSTART=0
 LOCAL_BIN=""
 AGENT_NAME="$(hostname -s)"
 INSTALL_DIR=/opt/nms-agent
 CONF_DIR=/etc/nms-agent
 STATE_DIR=/var/lib/nms-agent
 SVC_USER=nms-agent
-UNIT_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/nms-agent.service"
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+UNIT_SRC="$SRC_DIR/nms-agent.service"
 
-usage() { sed -n '2,11p' "$0"; exit 1; }
+usage() { sed -n '2,15p' "$0"; exit 1; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,6 +39,7 @@ while [[ $# -gt 0 ]]; do
     --local)    LOCAL_BIN="$2"; shift 2 ;;
     --name)     AGENT_NAME="$2"; shift 2 ;;
     --re-enrol|--re-enroll) REENROL=1; shift ;;
+    --no-start) NOSTART=1; shift ;;
     -h|--help)  usage ;;
     *) echo "Unknown argument: $1" >&2; usage ;;
   esac
@@ -40,6 +47,8 @@ done
 
 [[ $EUID -eq 0 ]] || { echo "Run as root (sudo)." >&2; exit 1; }
 command -v systemctl >/dev/null || { echo "systemd is required." >&2; exit 1; }
+# Inside a chroot (image build) systemd is not running: enable units but never start them.
+[[ -d /run/systemd/system ]] || NOSTART=1
 
 case "$(uname -m)" in
   x86_64)  RID=linux-x64 ;;
@@ -90,37 +99,58 @@ else
 fi
 
 # ---- config -----------------------------------------------------------------------------------
-if [[ ! -f "$CONF_DIR/agent.json" ]]; then
-  [[ -n "$API_URL" && -n "$TOKEN" ]] || { echo "First install needs --api-url and --token." >&2; exit 1; }
+# The state directory holds credentials (once enrolled), claim.json and claim-code (while a claim is pending).
+clear_state() { rm -f "$STATE_DIR/credentials" "$STATE_DIR/claim.json" "$STATE_DIR/claim-code"; }
+
+write_config() {
   echo "==> Writing $CONF_DIR/agent.json"
-  cat > "$CONF_DIR/agent.json" <<EOF
-{
-  "ApiBaseUrl": "$API_URL",
-  "EnrollmentToken": "$TOKEN",
-  "Name": "$AGENT_NAME",
-  "StateDir": "$STATE_DIR",
-  "Interfaces": []
-}
-EOF
+  {
+    echo "{"
+    echo "  \"ApiBaseUrl\": \"$API_URL\","
+    [[ -n "$TOKEN" ]] && echo "  \"EnrollmentToken\": \"$TOKEN\","
+    echo "  \"Name\": \"$AGENT_NAME\","
+    echo "  \"StateDir\": \"$STATE_DIR\","
+    echo "  \"Interfaces\": []"
+    echo "}"
+  } > "$CONF_DIR/agent.json"
   chmod 0640 "$CONF_DIR/agent.json"
   chown root:"$SVC_USER" "$CONF_DIR/agent.json"
-elif [[ -n "$TOKEN" ]]; then
-  echo "==> Config exists; storing the new enrollment token"
-  python3 - "$CONF_DIR/agent.json" "$TOKEN" "${API_URL}" <<'PY' 2>/dev/null || sed -i "s|\"EnrollmentToken\": *\"[^\"]*\"|\"EnrollmentToken\": \"$TOKEN\"|" "$CONF_DIR/agent.json"
+}
+
+# Set or remove the token (and optionally the API URL) in an existing config without touching other keys.
+update_config() {   # $1 = token ('' removes it), $2 = api url ('' keeps it)
+  if command -v python3 >/dev/null; then
+    python3 - "$CONF_DIR/agent.json" "$1" "$2" <<'PY'
 import json, sys
 p, tok, url = sys.argv[1:4]
-d = json.load(open(p)); d["EnrollmentToken"] = tok
+d = json.load(open(p))
+if tok: d["EnrollmentToken"] = tok
+else: d.pop("EnrollmentToken", None)
 if url: d["ApiBaseUrl"] = url
 json.dump(d, open(p, "w"), indent=2)
 PY
+  elif [[ -n "$1" ]]; then
+    sed -i "s|\"EnrollmentToken\": *\"[^\"]*\"|\"EnrollmentToken\": \"$1\"|" "$CONF_DIR/agent.json"
+  fi
+}
+
+if [[ ! -f "$CONF_DIR/agent.json" ]]; then
+  [[ -n "$API_URL" ]] || { echo "First install needs --api-url (and optionally --token)." >&2; exit 1; }
+  write_config
+elif [[ -n "$TOKEN" ]]; then
+  echo "==> Config exists; storing the new enrollment token"
+  update_config "$TOKEN" "$API_URL"
   if [[ $REENROL -eq 1 ]]; then
     echo "==> --re-enrol: removing stored credentials; the agent will enrol with the new token"
-    rm -f "$STATE_DIR/credentials"
+    clear_state
   elif [[ -f "$STATE_DIR/credentials" ]]; then
     echo "==> Stored credentials kept; the token is only used if the API rejects them (pass --re-enrol to force)"
   fi
+elif [[ $REENROL -eq 1 ]]; then
+  echo "==> --re-enrol: removing stored credentials and any token; the agent will show a new claim code"
+  update_config "" "$API_URL"
+  clear_state
 else
-  [[ $REENROL -eq 0 ]] || { echo "--re-enrol needs --token <new token>." >&2; exit 1; }
   echo "==> Keeping existing $CONF_DIR/agent.json and credentials"
 fi
 
@@ -131,10 +161,38 @@ else
   echo "!!  nms-agent.service not found next to install.sh; fetching from $BASE_URL" >&2
   curl -fsSL -o /etc/systemd/system/nms-agent.service "$BASE_URL/nms-agent.service"
 fi
+# Console banner (enrollment code on tty1 / login prompt). Optional: skipped when the files are not shipped.
+CONSOLE=0
+if [[ -f "$SRC_DIR/nms-agent-console.sh" && -f "$SRC_DIR/nms-agent-console.service" ]]; then
+  install -m 0755 -o root -g root "$SRC_DIR/nms-agent-console.sh" "$INSTALL_DIR/nms-agent-console.sh"
+  install -m 0644 "$SRC_DIR/nms-agent-console.service" /etc/systemd/system/nms-agent-console.service
+  CONSOLE=1
+fi
+
+enable_unit() {   # works with or without a running systemd (chroot): fall back to the wants symlink
+  systemctl enable "$1" >/dev/null 2>&1 || {
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    ln -sf "/etc/systemd/system/$1.service" "/etc/systemd/system/multi-user.target.wants/$1.service"
+  }
+}
+
+if [[ $NOSTART -eq 1 ]]; then
+  enable_unit nms-agent
+  [[ $CONSOLE -eq 1 ]] && enable_unit nms-agent-console
+  echo "Installed and enabled (not started: --no-start / chroot). The agent starts at next boot."
+  exit 0
+fi
+
 systemctl daemon-reload
-systemctl enable nms-agent >/dev/null
+enable_unit nms-agent
 systemctl restart nms-agent
+if [[ $CONSOLE -eq 1 ]]; then enable_unit nms-agent-console; systemctl restart nms-agent-console; fi
 sleep 2
 systemctl --no-pager --lines=5 status nms-agent || true
 echo
+if [[ -z "$TOKEN" && ! -f "$STATE_DIR/credentials" ]]; then
+  echo "No token given: the agent shows an ENROLLMENT CODE within a few seconds."
+  echo "  journalctl -u nms-agent -f | grep -i 'enrollment code'     (also shown on the console)"
+  echo "Approve it in the portal under Pending agents."
+fi
 echo "Done. Follow logs with: journalctl -u nms-agent -f"
