@@ -1,0 +1,66 @@
+#cloud-config
+# Pulsar agent appliance: unattended Ubuntu Server 26.04 LTS install.
+# Placeholders (__API_URL__, __BASE_URL__, __PASSWORD_HASH__) are filled in by iso/build.sh.
+#
+# What you get: a minimal Ubuntu with the nms-agent service, the console banner service, unattended security
+# updates with a nightly reboot window, SSH, and the usual hypervisor guest agents. The box wipes the first disk.
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  timezone: UTC
+  source:
+    id: ubuntu-server-minimal
+    search_drivers: false
+  refresh-installer:
+    update: false
+  network:
+    version: 2
+    ethernets:
+      any:
+        match:
+          name: "e*"
+        dhcp4: true
+        dhcp-identifier: mac
+  storage:
+    layout:
+      name: direct
+  identity:
+    hostname: pulsar-agent
+    username: pulsar
+    password: "__PASSWORD_HASH__"
+  ssh:
+    install-server: true
+    allow-pw: true
+  packages:
+    - curl
+    - ca-certificates
+    - libcap2-bin
+    - unattended-upgrades
+    - qemu-guest-agent
+    - open-vm-tools
+    - linux-cloud-tools-virtual
+  updates: security
+  late-commands:
+    # 1. Hostname unique per box (last 6 hex digits of the first NIC's MAC), so several appliances do not collide.
+    - >-
+      curtin in-target --target=/target -- bash -c
+      'm=$(cat /sys/class/net/e*/address 2>/dev/null | head -1 | tr -d ":" | tail -c 7);
+      h="pulsar-${m:-agent}"; echo "$h" > /etc/hostname; sed -i "s/pulsar-agent/$h/g" /etc/hosts'
+    # 2. Agent payload from the ISO (binary, installer, units, console banner).
+    - mkdir -p /target/opt/pulsar-install
+    - cp -r /cdrom/pulsar/. /target/opt/pulsar-install/
+    - >-
+      curtin in-target --target=/target -- bash /opt/pulsar-install/install.sh
+      --local /opt/pulsar-install/nms-agent-linux-x64 --api-url "__API_URL__" --base-url "__BASE_URL__" --no-start
+    - rm -f /target/opt/pulsar-install/nms-agent-linux-x64
+    # 3. Security updates apply themselves; kernel updates reboot the box at 03:30 local (UTC here).
+    - >-
+      curtin in-target --target=/target -- bash -c
+      'printf "Unattended-Upgrade::Automatic-Reboot \"true\";\nUnattended-Upgrade::Automatic-Reboot-Time \"03:30\";\nUnattended-Upgrade::Remove-Unused-Dependencies \"true\";\n" > /etc/apt/apt.conf.d/52pulsar;
+      printf "APT::Periodic::Update-Package-Lists \"1\";\nAPT::Periodic::Unattended-Upgrade \"1\";\nAPT::Periodic::AutocleanInterval \"7\";\n" > /etc/apt/apt.conf.d/20auto-upgrades'
+    # 4. The default console password must be changed at first login.
+    - curtin in-target --target=/target -- chage -d 0 pulsar
+    # 5. Smaller journal so an SD card or thin VM disk is not eaten by logs.
+    - curtin in-target --target=/target -- bash -c 'mkdir -p /etc/systemd/journald.conf.d; printf "[Journal]\nSystemMaxUse=200M\n" > /etc/systemd/journald.conf.d/pulsar.conf'

@@ -91,6 +91,21 @@ public static class ManagementEndpoints
             await db.SaveChangesAsync();
             return Results.Ok(new AgentCreated(a.Id, token, a.EnrollmentTokenExpiresUtc.Value));
         });
+        // ---- Pending claims (agents waiting to be assigned to a site) ------------------------------
+        api.MapGet("/claims", (ClaimService claims, CancellationToken ct) => claims.ListPendingAsync(ct));
+        write.MapPost("/claims/{id:guid}/approve", async (Guid id, ClaimApproveInput input, ClaimsPrincipal user, ClaimService claims, CancellationToken ct) =>
+        {
+            try
+            {
+                var by = user.Identity?.Name ?? user.FindFirstValue("preferred_username") ?? "unknown";
+                var agent = await claims.ApproveAsync(id, input, by, ct);
+                return Results.Created($"/api/agents/{agent.Id}", agent);
+            }
+            catch (ClaimException ex) { return Results.Problem(ex.Message, statusCode: ex.Status); }
+        });
+        write.MapPost("/claims/{id:guid}/reject", async (Guid id, ClaimService claims, CancellationToken ct) =>
+            await claims.RejectAsync(id, ct) ? Results.NoContent() : Results.NotFound());
+
         admin.MapPost("/agents/{id:guid}/revoke", async (Guid id, NmsDbContext db, IHubContext<AgentHub, IAgentClient> hub) =>
         {
             var a = await db.Agents.FindAsync(id); if (a is null) return Results.NotFound();

@@ -49,12 +49,17 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy("agent", ctx => RateLimitPartition.GetTokenBucketLimiter(
         ctx.Request.Headers[AgentAuth.AgentIdHeader].ToString() is { Length: > 0 } id ? id : ctx.Connection.RemoteIpAddress?.ToString() ?? "anon",
         _ => new TokenBucketRateLimiterOptions { TokenLimit = 60, TokensPerPeriod = 30, ReplenishmentPeriod = TimeSpan.FromSeconds(10), AutoReplenishment = true }));
+    // Anonymous claim endpoints: one box polls every 5 s (12/min); a NAT'd site with a handful of new boxes fits in 40.
+    o.AddPolicy("claim", ctx => RateLimitPartition.GetSlidingWindowLimiter(
+        ctx.Connection.RemoteIpAddress?.ToString() ?? "anon",
+        _ => new SlidingWindowRateLimiterOptions { PermitLimit = 40, Window = TimeSpan.FromMinutes(1), SegmentsPerWindow = 6, QueueLimit = 0 }));
 });
 
 builder.Services.AddSingleton<AgentRegistry>();
 builder.Services.AddSingleton<DiscoveryStore>();
 builder.Services.AddScoped<AgentConfigBuilder>();
 builder.Services.AddScoped<ResultIngestService>();
+builder.Services.AddScoped<ClaimService>();
 builder.Services.AddScoped<ReleasePublisher>();
 builder.Services.AddHttpClient<GitHubReleaseSource>(c =>
 {

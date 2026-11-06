@@ -106,17 +106,11 @@ public sealed class HubConnectionService(
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized && enrollment.CanReEnroll)
             {
+                // Re-enrols with the configured token, or shows a fresh claim code when there is none.
                 await _hub!.DisposeAsync();
                 c = await enrollment.ReEnrollAsync(ct);
                 _hub = Build(url, c, closed, ct);
                 delay = TimeSpan.FromSeconds(2);
-            }
-            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
-            {
-                log.LogError("API rejected the stored credentials and no EnrollmentToken is configured. " +
-                             "Re-issue a token in the portal and run install.sh --token <token>. Retry in {Delay}", delay);
-                await Task.Delay(delay, ct);
-                delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 300));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

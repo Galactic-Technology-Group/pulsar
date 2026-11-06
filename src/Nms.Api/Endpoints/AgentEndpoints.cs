@@ -46,6 +46,30 @@ public static class AgentEndpoints
             return Results.Ok(new EnrollResponse(agent.Id, secret, agent.SiteId, agent.Site.Name));
         }).AllowAnonymous();
 
+        // ---- Claim-code enrollment (no credentials yet) ---------------------------------------------
+        g.MapPost("/agents/claims", async (ClaimRequest req, HttpContext http, ClaimService claims, CancellationToken ct) =>
+        {
+            try
+            {
+                var created = await claims.CreateAsync(req, http.Connection.RemoteIpAddress?.ToString(), ct);
+                return Results.Created($"/api/agents/claims/{created.ClaimId}", created);
+            }
+            catch (ClaimException ex) { return Results.Problem(ex.Message, statusCode: ex.Status); }
+        }).AllowAnonymous().RequireRateLimiting("claim");
+
+        g.MapGet("/agents/claims/{id:guid}", async (Guid id, HttpContext http, ClaimService claims, CancellationToken ct) =>
+        {
+            var key = http.Request.Headers[ClaimAuth.ClaimKeyHeader].ToString();
+            var r = await claims.PollAsync(id, key, ct);
+            return r.Outcome switch
+            {
+                ClaimService.PollOutcome.Approved => Results.Ok(r.Credentials),
+                ClaimService.PollOutcome.Pending => Results.Accepted(null, new ClaimPending(ClaimState.Pending, r.ExpiresUtc!.Value)),
+                ClaimService.PollOutcome.Gone => Results.StatusCode(StatusCodes.Status410Gone),
+                _ => Results.NotFound(),
+            };
+        }).AllowAnonymous().RequireRateLimiting("claim");
+
         g.MapPost("/results", async (ResultsBatch batch, HttpContext http, ResultIngestService ingest, CancellationToken ct) =>
         {
             var agentId = http.User.AgentId();

@@ -26,7 +26,8 @@ Site (LAN, behind NAT)                        Azure
 | `src/Nms.Portal` | Blazor Server UI (Entra ID) |
 | `tests/` | xUnit tests |
 | `infra/` | Bicep for the Azure environment |
-| `deploy/agent/` | `install.sh`, systemd unit, VLAN helper |
+| `deploy/agent/` | `install.sh`, systemd units (agent + console banner), VLAN helper |
+| `iso/` | x64 appliance ISO build (Ubuntu autoinstall) |
 | `docs/` | Architecture, VLAN setup, agent install, credential rotation register, production readiness checklist |
 
 ## Run locally
@@ -56,7 +57,8 @@ Run an agent against the local API (any Linux box or WSL):
 
 ## How it works
 
-- **Enrollment**: an admin creates an agent in the portal and gets a 24-hour single-use token. The agent posts it once and receives a per-agent secret (PBKDF2-hashed server side). Tokens and secrets can be re-issued or revoked per agent.
+- **Enrollment**: by default a new box shows a short **enrollment code** on its console and polls the API; an operator approves it under Pending agents and assigns the site, and the box collects a per-agent secret (PBKDF2-hashed server side). Only the box that requested the code can collect it. For scripted rollouts an admin can instead create the agent in the portal and pass its 24-hour single-use token to `install.sh`. Secrets can be re-issued or revoked per agent.
+- **Appliance ISO**: `iso/build.sh` turns stock Ubuntu Server 26.04 LTS into an unattended x64 installer that boots straight to an enrollment code (see `iso/README.md`; boot test in `docs/iso-boot-test.md`).
 - **Transport**: one outbound SignalR connection for config pushes, commands (run check now, discovery, update) and heartbeats; results are uploaded in batches over plain HTTPS. Only outbound 443 is required.
 - **Store and forward**: results are written to a local SQLite outbox and deleted only after the API acknowledges them, so a WAN outage loses nothing (up to 500k results).
 - **State machine**: `Up → Degraded → Down` after `FailureThreshold` consecutive failures, `Up` again on the first success. Incidents open on Down and close on recovery. Replayed old results never flap current state.

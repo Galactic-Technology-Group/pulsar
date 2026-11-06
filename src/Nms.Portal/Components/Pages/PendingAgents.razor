@@ -1,0 +1,125 @@
+@page "/agents/pending"
+@inject NmsApiClient Api
+@inject LiveUpdates Live
+@implements IDisposable
+
+<PageTitle>Pending agents</PageTitle>
+<h1>Pending agents <small class="muted">boxes showing an enrollment code, waiting to be assigned to a site</small></h1>
+
+@if (claims is null) { <p class="muted">Loading…</p> }
+else if (claims.Count == 0)
+{
+    <div class="card">
+        <p>No agent is waiting. Boot an appliance (or run <code>install.sh --api-url …</code> without a token) and its code appears here within seconds.</p>
+    </div>
+}
+else
+{
+    @foreach (var c in claims)
+    {
+        var f = Form(c);
+        <section class="card claim">
+            <div class="claim-head">
+                <div class="code">@c.Code</div>
+                <div>
+                    <div><b>@c.Hostname</b> @if (c.RequestedName is not null) { <span class="muted">(asks to be called @c.RequestedName)</span> }</div>
+                    <div class="small muted">agent @c.AgentVersion · from @(c.RemoteAddress ?? "?") · requested @Ago(c.CreatedUtc) · expires in @Until(c.ExpiresUtc)</div>
+                    <div class="small">@string.Join(", ", c.Interfaces.Select(i => $"{i.Name}{(i.VlanId is null ? "" : $" (VLAN {i.VlanId})")} {i.Address}/{i.PrefixLength}"))</div>
+                </div>
+            </div>
+            <AuthorizeView Roles="Nms.Admin,Nms.Operator">
+                <div class="form-row">
+                    <label>Site
+                        <select @bind="f.SiteId">
+                            <option value="">— choose site —</option>
+                            @foreach (var s in sites) { <option value="@s.Id">@s.Name</option> }
+                        </select>
+                    </label>
+                    <label>Agent name <input @bind="f.Name" /></label>
+                    <button class="primary" @onclick="() => Approve(c)" disabled="@(f.SiteId is null || string.IsNullOrWhiteSpace(f.Name) || busy)">Approve</button>
+                    <button class="danger small" @onclick="() => Reject(c)" disabled="@busy">Reject</button>
+                </div>
+            </AuthorizeView>
+            @if (errors.TryGetValue(c.Id, out var err)) { <p class="error">@err</p> }
+        </section>
+    }
+}
+
+@if (approved is not null)
+{
+    <div class="card"><p>Approved: <b>@approved.Name</b> at <b>@approved.Site?.Name</b>. The box picks up its credentials within a few seconds and shows Online under <a href="sites/@approved.SiteId">the site</a>.</p></div>
+}
+
+@code {
+    private List<PendingClaimDto>? claims;
+    private List<Site> sites = new();
+    private readonly Dictionary<Guid, ApproveForm> forms = new();
+    private readonly Dictionary<Guid, string> errors = new();
+    private Agent? approved;
+    private bool busy;
+    private Timer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        sites = await Api.GetSitesAsync();
+        await Load();
+        await Live.EnsureConnectedAsync();
+        Live.Changed += OnChanged;
+        // Expiry countdowns and the odd missed hub event.
+        timer = new Timer(async _ => await OnChanged(), null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
+    }
+
+    private async Task Load()
+    {
+        claims = await Api.GetPendingClaimsAsync();
+        foreach (var id in forms.Keys.Where(id => claims.All(c => c.Id != id)).ToList()) forms.Remove(id);
+    }
+    private async Task OnChanged() { try { await Load(); await InvokeAsync(StateHasChanged); } catch { /* page may be disposing */ } }
+    public void Dispose() { Live.Changed -= OnChanged; timer?.Dispose(); }
+
+    private ApproveForm Form(PendingClaimDto c)
+    {
+        if (!forms.TryGetValue(c.Id, out var f))
+        {
+            f = new ApproveForm { Name = c.RequestedName ?? c.Hostname, SiteId = sites.Count == 1 ? sites[0].Id : null };
+            forms[c.Id] = f;
+        }
+        return f;
+    }
+
+    private async Task Approve(PendingClaimDto c)
+    {
+        var f = Form(c);
+        if (f.SiteId is null) return;
+        busy = true; errors.Remove(c.Id);
+        try
+        {
+            approved = await Api.ApproveClaimAsync(c.Id, new ClaimApproveInput(f.SiteId.Value, f.Name));
+            await Load();
+        }
+        catch (ApiException ex) { errors[c.Id] = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task Reject(PendingClaimDto c)
+    {
+        busy = true; errors.Remove(c.Id);
+        try { await Api.RejectClaimAsync(c.Id); await Load(); }
+        catch (ApiException ex) { errors[c.Id] = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private static string Ago(DateTimeOffset t) => (DateTimeOffset.UtcNow - t) switch
+    {
+        { TotalSeconds: < 90 } s => $"{(int)s.TotalSeconds}s ago",
+        var s => $"{(int)s.TotalMinutes}m ago",
+    };
+    private static string Until(DateTimeOffset t) => (t - DateTimeOffset.UtcNow) switch
+    {
+        { TotalSeconds: <= 0 } => "expired",
+        { TotalSeconds: < 90 } s => $"{(int)s.TotalSeconds}s",
+        var s => $"{(int)Math.Ceiling(s.TotalMinutes)} min",
+    };
+
+    private sealed class ApproveForm { public Guid? SiteId { get; set; } public string Name { get; set; } = ""; }
+}

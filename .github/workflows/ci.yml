@@ -5,6 +5,16 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      build_iso:
+        description: "Build the x64 appliance ISO"
+        type: boolean
+        default: true
+      api_url:
+        description: "API URL baked into the ISO (defaults to the PULSAR_API_URL repository variable)"
+        type: string
+        default: ""
 
 env:
   DOTNET_NOLOGO: "1"
@@ -68,10 +78,53 @@ jobs:
           pattern: nms-agent-*
           path: dist
           merge-multiple: true
-      - run: cp deploy/agent/install.sh deploy/agent/uninstall.sh deploy/agent/vlan-setup.sh deploy/agent/nms-agent.service dist/
+      - run: cp deploy/agent/install.sh deploy/agent/uninstall.sh deploy/agent/vlan-setup.sh deploy/agent/nms-agent.service deploy/agent/nms-agent-console.sh deploy/agent/nms-agent-console.service dist/
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+
+  iso:
+    # x64 appliance ISO: on release tags and on demand. ~3 GB, kept as a workflow artifact (above the 2 GiB
+    # release-asset limit) and optionally uploaded to Azure Blob storage.
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.build_iso)
+    needs: agent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: nms-agent-linux-x64
+          path: agent
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xorriso
+      - name: Build ISO
+        env:
+          API_URL: ${{ inputs.api_url != '' && inputs.api_url || vars.PULSAR_API_URL }}
+          BASE_URL: https://github.com/${{ github.repository }}/releases/latest/download
+          ISO_PASSWORD: ${{ secrets.ISO_CONSOLE_PASSWORD }}
+        run: |
+          [[ -n "$API_URL" ]] || { echo "Set the PULSAR_API_URL repository variable or pass api_url." >&2; exit 1; }
+          chmod +x iso/build.sh
+          ./iso/build.sh --api-url "$API_URL" --base-url "$BASE_URL" --agent-dir agent --out pulsar-agent-amd64.iso --password "${ISO_PASSWORD:-pulsar}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pulsar-agent-amd64-iso
+          path: |
+            pulsar-agent-amd64.iso
+            pulsar-agent-amd64.iso.sha256
+          retention-days: 14
+          compression-level: 0
+      - name: Upload to Azure Blob (optional)
+        env:
+          SAS: ${{ secrets.ISO_UPLOAD_SAS_URL }}
+        run: |
+          [[ -n "$SAS" ]] || { echo "ISO_UPLOAD_SAS_URL not set; skipping blob upload"; exit 0; }
+          name="pulsar-agent-amd64-${GITHUB_REF_NAME}.iso"
+          base="${SAS%%\?*}"; query="${SAS#*\?}"
+          for f in pulsar-agent-amd64.iso pulsar-agent-amd64.iso.sha256; do
+            dest="$base/${name}${f#pulsar-agent-amd64.iso}?$query"
+            curl -fsS -X PUT -H "x-ms-blob-type: BlockBlob" --upload-file "$f" "$dest"
+          done
+          echo "Uploaded $name"
 
   images:
     needs: test

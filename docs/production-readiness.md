@@ -43,6 +43,7 @@ infrastructure already do, what is done per environment by hand, and what is sti
 | 2 | Rotate the two secrets in `docs/credential-rotation.md` | Both were pasted into chat | user |
 | 3 | Soak: dev VM agent running 3+ days; look for false agent-offline incidents and outbox growth | Confirms the 3-minute offline threshold and reconnect behaviour | user |
 | 4 | Pi validation of the same build (arm64 binary, `setcap`, SD wear) | Production sites will mostly run Pis | user |
+| 4a | Appliance ISO boot test (`docs/iso-boot-test.md`) against the deployed claim-code API | CI proves the image builds (26.04.1, run 42256859494); only a boot proves the autoinstall and enrollment | user + Claude |
 | 5 | Self-update rollback (keep previous binary, revert on crash-loop) | A bad release currently needs a manual reinstall | Claude |
 | 6 | Load test: simulated 50 agents × 300 checks against dev | Confirms B2s → GeneralPurpose sizing | Claude |
 

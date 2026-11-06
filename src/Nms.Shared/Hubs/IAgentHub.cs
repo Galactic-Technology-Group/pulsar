@@ -32,4 +32,6 @@ public interface IPortalClient
     Task CheckStateChanged(Guid siteId, Guid deviceId, Guid checkId, CheckState state, DateTimeOffset at);
     Task AgentStatusChanged(Guid siteId, Guid agentId, AgentStatus status, DateTimeOffset at);
     Task IncidentChanged(Guid incidentId, Guid siteId, bool open);
+    /// <summary>A claim was created, approved, rejected or collected: the Pending agents page re-queries.</summary>
+    Task PendingClaimsChanged();
 }

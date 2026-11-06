@@ -150,6 +150,31 @@ public class MaintenanceWindow
     public string Reason { get; set; } = "";
 }
 
+/// <summary>
+/// A claim-code enrollment in progress. Rows are short-lived: pruned a day after expiry. No secret is ever stored
+/// here; the agent's secret is generated at collection time and written to <see cref="Agent.SecretHash"/> only.
+/// </summary>
+public class AgentClaim
+{
+    public Guid Id { get; set; }
+    /// <summary>Normalized 8-character code (no dash), unique while pending.</summary>
+    public string Code { get; set; } = "";
+    /// <summary>SHA-256 of the random key the agent generated; proves the poller is the box that asked.</summary>
+    public string ClaimKeyHash { get; set; } = "";
+    public string Hostname { get; set; } = "";
+    public string? AgentVersion { get; set; }
+    public string? RequestedName { get; set; }
+    /// <summary>JSON array of InterfaceInfo as reported at claim time, shown to the approver.</summary>
+    public string InterfacesJson { get; set; } = "[]";
+    public string? RemoteAddress { get; set; }
+    public ClaimState State { get; set; } = ClaimState.Pending;
+    public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset ExpiresUtc { get; set; }
+    public Guid? AgentId { get; set; }
+    public string? ApprovedBy { get; set; }
+    public DateTimeOffset? ApprovedUtc { get; set; }
+}
+
 public class AgentRelease
 {
     public Guid Id { get; set; }
