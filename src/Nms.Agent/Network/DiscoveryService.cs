@@ -4,12 +4,37 @@ using Nms.Shared.Contracts;
 
 namespace Nms.Agent.Network;
 
+/// <summary>Reverse lookup of one address; null when there is no PTR record or the resolver does not answer in time.</summary>
+public interface IReverseResolver
+{
+    Task<string?> ResolveAsync(IPAddress address, TimeSpan timeout, CancellationToken ct);
+}
+
+/// <summary>Uses the box's own resolver (systemd-resolved / the site's DNS), so names come from the site's DNS zone or the router's DHCP registrations.</summary>
+public sealed class DnsReverseResolver : IReverseResolver
+{
+    public async Task<string?> ResolveAsync(IPAddress address, TimeSpan timeout, CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(timeout);
+        try
+        {
+            var entry = await Dns.GetHostEntryAsync(address.ToString(), cts.Token);
+            return DiscoveryService.CleanHostname(entry.HostName, address);
+        }
+        catch (Exception) when (!ct.IsCancellationRequested) { return null; }   // NXDOMAIN, SERVFAIL, timeout
+    }
+}
+
 /// <summary>
 /// On-demand ping sweep of a CIDR (max /22) followed by an ARP table read, so L2-only hosts that drop ICMP
-/// still show up when the agent is on the same VLAN. No nmap dependency.
+/// still show up when the agent is on the same VLAN, then a reverse-DNS lookup of every host found. No nmap dependency.
 /// </summary>
-public sealed class DiscoveryService(ILogger<DiscoveryService> log)
+public sealed class DiscoveryService(ILogger<DiscoveryService> log, IReverseResolver resolver)
 {
+    /// <summary>Per-address PTR lookup budget. Lookups run 32 at a time, so a full /24 of silent resolvers costs about 8 x this.</summary>
+    public static readonly TimeSpan HostnameTimeout = TimeSpan.FromSeconds(1);
+
     public async Task<DiscoveryResult> RunAsync(DiscoveryRequest req, Guid agentId, CancellationToken ct)
     {
         if (!TryParseCidr(req.Cidr, out var network, out var prefix))
@@ -45,7 +70,32 @@ public sealed class DiscoveryService(ILogger<DiscoveryService> log)
         }
 
         var list = found.Values.OrderBy(h => ToUInt(IPAddress.Parse(h.Address))).ToList();
+        list = await ResolveHostnamesAsync(list, ct);
+        log.LogInformation("Discovery {Id}: {Hosts} hosts, {Named} with a hostname", req.RequestId, list.Count, list.Count(h => h.Hostname is not null));
         return new DiscoveryResult(req.RequestId, agentId, req.VlanId, list, null);
+    }
+
+    /// <summary>Reverse-resolves every host in parallel; a host whose lookup fails keeps a null hostname. Order is preserved.</summary>
+    internal async Task<List<DiscoveredHost>> ResolveHostnamesAsync(IReadOnlyList<DiscoveredHost> hosts, CancellationToken ct)
+    {
+        using var gate = new SemaphoreSlim(32);
+        var named = await Task.WhenAll(hosts.Select(async h =>
+        {
+            await gate.WaitAsync(ct);
+            try { return h with { Hostname = await resolver.ResolveAsync(IPAddress.Parse(h.Address), HostnameTimeout, ct) }; }
+            finally { gate.Release(); }
+        }));
+        return named.ToList();
+    }
+
+    /// <summary>Trims the trailing dot and drops answers that only echo the address back (some resolvers synthesise "1-2-3-4.in-addr.arpa" or the IP itself).</summary>
+    public static string? CleanHostname(string? name, IPAddress address)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        name = name.Trim().TrimEnd('.');
+        if (name.Length == 0 || name.Equals(address.ToString(), StringComparison.OrdinalIgnoreCase)) return null;
+        if (name.EndsWith(".in-addr.arpa", StringComparison.OrdinalIgnoreCase)) return null;
+        return name;
     }
 
     private static IEnumerable<(string Ip, string Mac)> ReadArpTable()

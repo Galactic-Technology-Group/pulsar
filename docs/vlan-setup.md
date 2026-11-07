@@ -17,7 +17,7 @@ Pick this for small sites, or anywhere you cannot touch switch configuration.
 The agent's switch port is an 802.1Q trunk. The host creates a sub-interface per VLAN (`eth0.10`, `eth0.20`, …) with an address on each. The agent lists those interfaces in every heartbeat, and for each probe binds to the interface whose subnet contains the target (or, failing that, whose VLAN id matches the device's VLAN in the portal).
 
 - **Proves L2 reachability** on every VLAN, independent of inter-VLAN routing and ACLs.
-- **Discovery** can sweep a VLAN and read the ARP table, so printers, cameras and IoT gear that ignore cross-subnet pings still show up.
+- **Discovery** can sweep a VLAN and read the ARP table, so printers, cameras and IoT gear that ignore cross-subnet pings still show up. Every host found is reverse-resolved through the agent box's own DNS, so names appear when the site's DNS zone or the router's DHCP registrations carry them; the Monitor button uses that name for the new device.
 - Required for Phase 2 access into management VLANs that are not routable from the user network.
 
 ### Switch side

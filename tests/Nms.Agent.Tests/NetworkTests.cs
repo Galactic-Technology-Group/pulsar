@@ -83,3 +83,43 @@ public class CidrTests
     [InlineData("nope/24")]
     public void Rejects_bad_input(string cidr) => Assert.False(DiscoveryService.TryParseCidr(cidr, out _, out _));
 }
+
+public class DiscoveryHostnameTests
+{
+    private sealed class FakeResolver(IDictionary<string, string?> names) : IReverseResolver
+    {
+        public int Calls;
+        public Task<string?> ResolveAsync(IPAddress address, TimeSpan timeout, CancellationToken ct)
+        {
+            Interlocked.Increment(ref Calls);
+            return Task.FromResult(names.TryGetValue(address.ToString(), out var n) ? n : null);
+        }
+    }
+
+    [Fact]
+    public async Task Hosts_get_their_reverse_name_and_keep_order()
+    {
+        var resolver = new FakeResolver(new Dictionary<string, string?> { ["10.0.0.2"] = "printer.site.lan", ["10.0.0.9"] = null });
+        var svc = new DiscoveryService(Microsoft.Extensions.Logging.Abstractions.NullLogger<DiscoveryService>.Instance, resolver);
+        var input = new List<DiscoveredHost> { new("10.0.0.2", "aa:bb", 3), new("10.0.0.5", null, 1), new("10.0.0.9", "cc:dd", null) };
+
+        var named = await svc.ResolveHostnamesAsync(input, CancellationToken.None);
+
+        Assert.Equal(["10.0.0.2", "10.0.0.5", "10.0.0.9"], named.Select(h => h.Address));
+        Assert.Equal("printer.site.lan", named[0].Hostname);
+        Assert.Null(named[1].Hostname);
+        Assert.Null(named[2].Hostname);
+        Assert.Equal("aa:bb", named[0].MacAddress);   // other fields untouched
+        Assert.Equal(3, resolver.Calls);
+    }
+
+    [Theory]
+    [InlineData("printer.site.lan.", "printer.site.lan")]
+    [InlineData("  switch01 ", "switch01")]
+    [InlineData("10.0.0.2", null)]
+    [InlineData("2.0.0.10.in-addr.arpa", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void Cleans_resolver_answers(string? raw, string? expected) =>
+        Assert.Equal(expected, DiscoveryService.CleanHostname(raw, IPAddress.Parse("10.0.0.2")));
+}
