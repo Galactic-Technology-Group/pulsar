@@ -73,7 +73,7 @@ else
                     {
                         var known = devices.Any(d => d.Address == h.Address);
                         <tr>
-                            <td>@h.Address</td><td>@(h.Hostname ?? "-")</td><td>@h.MacAddress</td><td>@(h.LatencyMs is null ? "-" : h.LatencyMs + " ms")</td>
+                            <td>@h.Address</td><td>@(h.Hostname ?? "-") @if (h.HostnameSource is not null and not "dns") { <small class="muted">(@h.HostnameSource)</small> }</td><td>@h.MacAddress</td><td>@(h.LatencyMs is null ? "-" : h.LatencyMs + " ms")</td>
                             <td>@if (known) { <span class="muted">monitored</span> } else { <button class="small" @onclick="() => AddDiscovered(h)">Monitor</button> }</td>
                         </tr>
                     }

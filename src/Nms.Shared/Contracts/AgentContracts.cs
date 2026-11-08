@@ -52,8 +52,8 @@ public sealed record CheckDefinition(
 
 public sealed record DiscoveryRequest(Guid RequestId, string Cidr, int? VlanId, int TimeoutMs = 1000);
 
-/// <summary>One host found by a sweep. Hostname is the reverse-DNS name (PTR) when the site's resolver has one; null otherwise.</summary>
-public sealed record DiscoveredHost(string Address, string? MacAddress, int? LatencyMs, string? Hostname = null);
+/// <summary>One host found by a sweep. Hostname comes from reverse DNS, mDNS or NetBIOS (HostnameSource says which); null when nothing answered.</summary>
+public sealed record DiscoveredHost(string Address, string? MacAddress, int? LatencyMs, string? Hostname = null, string? HostnameSource = null);
 
 public sealed record DiscoveryResult(Guid RequestId, Guid AgentId, int? VlanId, IReadOnlyList<DiscoveredHost> Hosts, string? Error);
 

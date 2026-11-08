@@ -22,7 +22,7 @@ builder.Services.AddSingleton<ResultOutbox>();
 builder.Services.AddSingleton<ApiClient>();
 builder.Services.AddSingleton<EnrollmentService>();
 builder.Services.AddSingleton<SelfUpdater>();
-builder.Services.AddSingleton<IReverseResolver, DnsReverseResolver>();
+builder.Services.AddSingleton<IReverseResolver, HostnameResolver>();
 builder.Services.AddSingleton<DiscoveryService>();
 builder.Services.AddSingleton<IProbe, IcmpProbe>();
 builder.Services.AddSingleton<IProbe, TcpProbe>();

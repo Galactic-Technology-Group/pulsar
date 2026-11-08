@@ -4,24 +4,52 @@ using Nms.Shared.Contracts;
 
 namespace Nms.Agent.Network;
 
-/// <summary>Reverse lookup of one address; null when there is no PTR record or the resolver does not answer in time.</summary>
+/// <summary>A name found for an address and where it came from: "dns", "mdns" or "netbios".</summary>
+public sealed record ResolvedName(string Hostname, string Source);
+
+/// <summary>Reverse lookup of one address; null when nothing on the network knows a name for it within the timeout.</summary>
 public interface IReverseResolver
 {
-    Task<string?> ResolveAsync(IPAddress address, TimeSpan timeout, CancellationToken ct);
+    Task<ResolvedName?> ResolveAsync(IPAddress address, TimeSpan timeout, CancellationToken ct);
 }
 
-/// <summary>Uses the box's own resolver (systemd-resolved / the site's DNS), so names come from the site's DNS zone or the router's DHCP registrations.</summary>
-public sealed class DnsReverseResolver : IReverseResolver
+/// <summary>
+/// DNS first (the box's own resolver, so the site's zone or the router's DHCP registrations), then, when DNS has no
+/// PTR record, mDNS and NetBIOS in parallel since those come from the device itself. mDNS wins a tie because it
+/// carries the full name. Each stage gets the same timeout, so a host nobody knows costs at most two timeouts.
+/// </summary>
+public sealed class HostnameResolver : IReverseResolver
 {
-    public async Task<string?> ResolveAsync(IPAddress address, TimeSpan timeout, CancellationToken ct)
+    public delegate Task<string?> Lookup(IPAddress address, TimeSpan timeout, CancellationToken ct);
+
+    private readonly Lookup _dns, _mdns, _netbios;
+
+    public HostnameResolver() : this(DnsAsync, NameLookups.MdnsReverseAsync, NameLookups.NetBiosNameAsync) { }
+
+    internal HostnameResolver(Lookup dns, Lookup mdns, Lookup netbios) { _dns = dns; _mdns = mdns; _netbios = netbios; }
+
+    public async Task<ResolvedName?> ResolveAsync(IPAddress address, TimeSpan timeout, CancellationToken ct)
+    {
+        if (await Safe(_dns, address, timeout, ct) is { } dns) return new(dns, "dns");
+        var mdns = Safe(_mdns, address, timeout, ct);
+        var nb = Safe(_netbios, address, timeout, ct);
+        await Task.WhenAll(mdns, nb);
+        if (mdns.Result is { } m) return new(m, "mdns");
+        if (nb.Result is { } n) return new(n, "netbios");
+        return null;
+    }
+
+    private static async Task<string?> Safe(Lookup lookup, IPAddress address, TimeSpan timeout, CancellationToken ct)
+    {
+        try { return DiscoveryService.CleanHostname(await lookup(address, timeout, ct), address); }
+        catch (Exception) when (!ct.IsCancellationRequested) { return null; }
+    }
+
+    private static async Task<string?> DnsAsync(IPAddress address, TimeSpan timeout, CancellationToken ct)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(timeout);
-        try
-        {
-            var entry = await Dns.GetHostEntryAsync(address.ToString(), cts.Token);
-            return DiscoveryService.CleanHostname(entry.HostName, address);
-        }
+        try { return (await Dns.GetHostEntryAsync(address.ToString(), cts.Token)).HostName; }
         catch (Exception) when (!ct.IsCancellationRequested) { return null; }   // NXDOMAIN, SERVFAIL, timeout
     }
 }
@@ -32,7 +60,7 @@ public sealed class DnsReverseResolver : IReverseResolver
 /// </summary>
 public sealed class DiscoveryService(ILogger<DiscoveryService> log, IReverseResolver resolver)
 {
-    /// <summary>Per-address PTR lookup budget. Lookups run 32 at a time, so a full /24 of silent resolvers costs about 8 x this.</summary>
+    /// <summary>Per-stage lookup budget (DNS, then mDNS+NetBIOS). Lookups run 32 at a time, so a /24 full of nameless hosts costs about 16 x this.</summary>
     public static readonly TimeSpan HostnameTimeout = TimeSpan.FromSeconds(1);
 
     public async Task<DiscoveryResult> RunAsync(DiscoveryRequest req, Guid agentId, CancellationToken ct)
@@ -82,7 +110,11 @@ public sealed class DiscoveryService(ILogger<DiscoveryService> log, IReverseReso
         var named = await Task.WhenAll(hosts.Select(async h =>
         {
             await gate.WaitAsync(ct);
-            try { return h with { Hostname = await resolver.ResolveAsync(IPAddress.Parse(h.Address), HostnameTimeout, ct) }; }
+            try
+            {
+                var r = await resolver.ResolveAsync(IPAddress.Parse(h.Address), HostnameTimeout, ct);
+                return h with { Hostname = r?.Hostname, HostnameSource = r?.Source };
+            }
             finally { gate.Release(); }
         }));
         return named.ToList();
@@ -95,7 +127,8 @@ public sealed class DiscoveryService(ILogger<DiscoveryService> log, IReverseReso
         name = name.Trim().TrimEnd('.');
         if (name.Length == 0 || name.Equals(address.ToString(), StringComparison.OrdinalIgnoreCase)) return null;
         if (name.EndsWith(".in-addr.arpa", StringComparison.OrdinalIgnoreCase)) return null;
-        return name;
+        if (name.EndsWith(".local", StringComparison.OrdinalIgnoreCase)) name = name[..^6];   // mDNS suffix adds nothing
+        return name.Length == 0 ? null : name;
     }
 
     private static IEnumerable<(string Ip, string Mac)> ReadArpTable()
