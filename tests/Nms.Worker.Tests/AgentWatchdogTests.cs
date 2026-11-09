@@ -103,4 +103,31 @@ public class AgentWatchdogTests
         Assert.Equal(AgentStatus.Online, (await db.Agents.SingleAsync()).Status);
         Assert.Empty(db.Incidents);
     }
+
+    [Theory]
+    [InlineData(true, true)]     // site-wide window: recorded, not paged
+    [InlineData(false, false)]   // window on one device only: pages as usual
+    public async Task Site_maintenance_records_the_offline_incident_without_paging(bool siteWide, bool expectSuppressed)
+    {
+        var (sp, _) = Setup(DateTimeOffset.UtcNow.AddSeconds(-120));
+        using (var scope = sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NmsDbContext>();
+            var siteId = (await db.Agents.SingleAsync()).SiteId;
+            db.MaintenanceWindows.Add(new MaintenanceWindow
+            {
+                Id = Guid.NewGuid(), SiteId = siteWide ? siteId : null, DeviceId = siteWide ? null : Guid.NewGuid(),
+                StartUtc = DateTimeOffset.UtcNow.AddMinutes(-10), EndUtc = DateTimeOffset.UtcNow.AddMinutes(50), Reason = "patch night",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await Watchdog(sp).RunOnceAsync(CancellationToken.None);
+
+        using var verify = sp.CreateScope();
+        var inc = await verify.ServiceProvider.GetRequiredService<NmsDbContext>().Incidents.SingleAsync();
+        Assert.Equal(expectSuppressed, inc.Notified);
+        Assert.Equal(expectSuppressed, inc.RecoveryNotified);
+        Assert.Equal(expectSuppressed, inc.Summary.EndsWith("(during maintenance)"));
+    }
 }

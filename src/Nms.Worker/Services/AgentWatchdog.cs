@@ -10,6 +10,8 @@ namespace Nms.Worker.Services;
 /// Marks agents Offline when their heartbeat is stale and opens one AgentOffline incident per agent
 /// (the "site unreachable" alert). Closes it when the agent is seen again. The incident summary carries the
 /// live cross-check: whether the site's gateway is answering from Azure at the moment the agent went quiet.
+/// During a site-wide maintenance window the incident is still recorded but marked notified (down and recovery),
+/// the same suppression check-down and gateway incidents get, so patch night does not page.
 /// </summary>
 public sealed class AgentWatchdog(IServiceScopeFactory scopes, IOptions<WorkerOptions> options, ILogger<AgentWatchdog> log) : BackgroundService
 {
@@ -36,6 +38,9 @@ public sealed class AgentWatchdog(IServiceScopeFactory scopes, IOptions<WorkerOp
             .Where(c => c.Type == CheckType.GatewayPing && c.Enabled && c.Device.Kind == DeviceKind.Gateway && c.Device.Address != "")
             .Select(c => new { c.Device.SiteId, c.Device.Address, c.State })
             .ToListAsync(ct);
+        var maintenanceSites = (await db.MaintenanceWindows
+            .Where(m => m.StartUtc <= now && m.EndUtc >= now && m.DeviceId == null && m.SiteId != null)
+            .Select(m => m.SiteId!.Value).ToListAsync(ct)).ToHashSet();
 
         foreach (var a in agents)
         {
@@ -52,10 +57,12 @@ public sealed class AgentWatchdog(IServiceScopeFactory scopes, IOptions<WorkerOp
                         CheckState.Up => $"Agent {a.Name} is OFFLINE but gateway {gw.Address} answers from Azure: agent host or LAN problem",
                         _ => $"Agent {a.Name} is OFFLINE (site may be unreachable)",
                     };
+                    var suppressed = maintenanceSites.Contains(a.SiteId);
                     db.Incidents.Add(new Incident
                     {
                         Id = Guid.NewGuid(), Kind = IncidentKind.AgentOffline, SiteId = a.SiteId, AgentId = a.Id,
-                        OpenedUtc = a.LastSeenUtc ?? now, Summary = summary,
+                        OpenedUtc = a.LastSeenUtc ?? now, Summary = suppressed ? summary + " (during maintenance)" : summary,
+                        Notified = suppressed, RecoveryNotified = suppressed,
                     });
                 }
                 log.LogWarning("Agent {Agent} marked offline (last seen {LastSeen})", a.Name, a.LastSeenUtc);

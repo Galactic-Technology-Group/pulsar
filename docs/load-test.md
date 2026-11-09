@@ -95,6 +95,6 @@ Conclusions:
   fix if a portal page or a heartbeat ever feels slow: put the apps and the database in the same region for prod.
   `infra/main.prod.bicepparam` currently repeats the split.
 - **No scale-out happened**, which matters because the API has no SignalR backplane: with two replicas, a config push or
-  discovery request only reaches agents connected to the replica that handled the portal call. Keep `maxReplicas` at 1
-  for the API, or add Azure SignalR Service, before relying on scale-out.
+  discovery request only reaches agents connected to the replica that handled the portal call. The API is now capped
+  at one replica in `infra/main.bicep`; add Azure SignalR Service before raising it.
 - Seeding 15,000 checks took 10 s and cleaning 441,000 results took 3 s.

@@ -47,7 +47,7 @@ infrastructure already do, what is done per environment by hand, and what is sti
 | 4 | Pi validation of the same build (arm64 binary, `setcap`, SD wear) | Production sites will mostly run Pis | user |
 | 4a | Appliance ISO boot test (`docs/iso-boot-test.md`) against the deployed claim-code API | CI proves the image builds (26.04.1, run 42256859494); only a boot proves the autoinstall and enrollment | user + Claude |
 | 5 | ~~Self-update rollback~~ done in agent 0.1.7 (`docs/agent-install.md` → Automatic rollback). Remaining: re-run `install.sh` on hosts installed before 0.1.7 so systemd runs the start guard | Covers the update *from* 0.1.7 onward | user |
-| 6 | ~~Load test~~ done 2026-11-09: 50 agents × 300 checks for 30 min, 0 errors, p95 280 ms, Postgres CPU peak 19 % (`docs/load-test.md`). Follow-ups: same region for apps and database in prod, API `maxReplicas` 1 until there is a SignalR backplane | Sizing confirmed | Claude |
+| 6 | ~~Load test~~ done 2026-11-09: 50 agents × 300 checks for 30 min, 0 errors, p95 280 ms, Postgres CPU peak 19 % (`docs/load-test.md`). Follow-up: same region for apps and database in prod (API is now capped at one replica) | Sizing confirmed | Claude |
 
 ## Known limits of v1
 

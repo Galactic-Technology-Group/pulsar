@@ -196,8 +196,11 @@ module api 'modules/containerapp.bicep' = {
     registryServer: acr.outputs.loginServer
     external: true
     targetPort: 8080
+    // One replica: AgentHub/PortalHub groups and AgentRegistry are in-process, with no SignalR backplane, so a second
+    // replica would miss pushes for agents connected to the other one. The 50 x 300 load test peaked at 0.16 of
+    // 0.5 cores (docs/load-test.md); add Azure SignalR Service before raising this.
     minReplicas: 1
-    maxReplicas: 3
+    maxReplicas: 1
     secrets: [
       { name: 'pg-connection', keyVaultUrl: '${kvUri}secrets/pg-connection', identity: identity.id }
     ]
