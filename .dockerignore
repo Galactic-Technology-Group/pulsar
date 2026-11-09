@@ -10,3 +10,7 @@ deploy/
 docs/
 tests/
 *.md
+# Appliance ISOs built locally land in the repo root; never upload them as build context.
+*.iso
+*.iso.sha256
+*.env.local

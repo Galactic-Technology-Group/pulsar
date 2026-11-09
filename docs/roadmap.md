@@ -81,7 +81,7 @@ The gate before the first contracted site. Tracked line by line in `docs/product
 
 - End-to-end alert test (`docs/alert-test.md`), credential rotation, 3-day soak on the dev VM, Pi validation.
 - Appliance ISO boot test (`docs/iso-boot-test.md`) against the claim-code API.
-- Self-update rollback: **done** (agent 0.1.7). Load test: 50 agents × 300 checks against dev.
+- Self-update rollback: **done** (agent 0.1.7). Load test: **done** (`docs/load-test.md`).
 - Prod environment: `rg-pulsar-prod`, Entra apps, custom domains, verified sending domain, Azure Monitor alerts.
 
 **Exit criteria:** HQ and one customer site monitored; a WAN pull at the customer site produces one agent-offline alert
