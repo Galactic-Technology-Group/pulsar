@@ -26,6 +26,10 @@ public class Agent
     /// <summary>PBKDF2 hash of the agent secret issued at enrollment.</summary>
     public string? SecretHash { get; set; }
     public string? Version { get; set; }
+    /// <summary>Set while the agent reports that it rolled back a self-update from this version; cleared when a later update confirms.</summary>
+    public string? RollbackFromVersion { get; set; }
+    public string? RollbackReason { get; set; }
+    public DateTimeOffset? RollbackUtc { get; set; }
     public DateTimeOffset? LastSeenUtc { get; set; }
     public AgentStatus Status { get; set; } = AgentStatus.PendingEnrollment;
     public int HeartbeatIntervalSec { get; set; } = 30;
@@ -185,4 +189,7 @@ public class AgentRelease
     public string Sha256Arm64 { get; set; } = "";
     public bool IsCurrent { get; set; }
     public DateTimeOffset PublishedUtc { get; set; } = DateTimeOffset.UtcNow;
+    /// <summary>Filled by the releases endpoint: agents currently reporting a rollback from this version. Not stored.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int RolledBackAgents { get; set; }
 }

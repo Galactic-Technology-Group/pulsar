@@ -16,7 +16,10 @@ public sealed record EnrollResponse(Guid AgentId, string Secret, Guid SiteId, st
 
 public sealed record InterfaceInfo(string Name, int? VlanId, string Address, int PrefixLength);
 
-public sealed record HeartbeatDto(string AgentVersion, DateTimeOffset AgentTimeUtc, IReadOnlyList<InterfaceInfo> Interfaces, int QueuedResults);
+public sealed record HeartbeatDto(string AgentVersion, DateTimeOffset AgentTimeUtc, IReadOnlyList<InterfaceInfo> Interfaces, int QueuedResults, UpdateRollbackDto? LastRollback = null);
+
+/// <summary>The agent restored its previous binary after a self-update failed. Reported in every heartbeat until a later update confirms itself.</summary>
+public sealed record UpdateRollbackDto(string FailedVersion, string? RestoredVersion, string Reason, DateTimeOffset AtUtc);
 
 /// <summary>A single probe outcome. Time is the agent's clock in UTC.</summary>
 public sealed record CheckResultDto(Guid CheckId, DateTimeOffset Time, bool Ok, int? LatencyMs, string? Detail);

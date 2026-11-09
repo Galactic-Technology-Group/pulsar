@@ -10,11 +10,31 @@ public class SelfUpdaterTests
 {
     private static AgentVersionInfo Info(string v) => new(v, "https://example.invalid/x64", "https://example.invalid/arm64", new string('0', 64), new string('0', 64));
 
-    private static SelfUpdater Updater(FakeTimeProvider clock)
+    private static SelfUpdater Updater(FakeTimeProvider clock) => Updater(clock, new FakeInstall(AgentVersion.Current));
+
+    private static SelfUpdater Updater(FakeTimeProvider clock, FakeInstall box)
     {
-        var opts = Options.Create(new AgentOptions { StateDir = Path.Combine(Path.GetTempPath(), "nms-tests", Guid.NewGuid().ToString("N")) });
+        var opts = Options.Create(new AgentOptions { StateDir = box.State });
         var api = new ApiClient(opts, new CredentialStore(opts, NullLogger<CredentialStore>.Instance), NullLogger<ApiClient>.Instance);
-        return new SelfUpdater(api, NullLogger<SelfUpdater>.Instance, clock);
+        return new SelfUpdater(api, box.Guard(AgentVersion.Current), NullLogger<SelfUpdater>.Instance, clock);
+    }
+
+    [Fact]
+    public void A_version_this_box_rolled_back_from_stays_blocked_until_another_is_published()
+    {
+        var box = new FakeInstall(AgentVersion.Current);
+        File.WriteAllLines(Path.Combine(box.State, UpdateGuard.RollbackFile), ["failed=99.0.0", $"restored={AgentVersion.Current}", "reason=crash", "at=2026-11-09T03:00:00Z"]);
+        var u = Updater(new FakeTimeProvider(), box);
+        Assert.False(u.ShouldAttempt(Info("99.0.0")));
+        Assert.True(u.ShouldAttempt(Info("99.0.1")));
+    }
+
+    [Fact]
+    public void An_unconfirmed_update_is_never_stacked_on()
+    {
+        var box = new FakeInstall(AgentVersion.Current);
+        File.WriteAllLines(box.StateFile, [$"version={AgentVersion.Current}", "previous=0.0.1", "starts=1"]);
+        Assert.False(Updater(new FakeTimeProvider(), box).ShouldAttempt(Info("99.0.0")));
     }
 
     [Fact]

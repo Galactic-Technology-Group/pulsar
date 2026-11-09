@@ -78,7 +78,7 @@ jobs:
           pattern: nms-agent-*
           path: dist
           merge-multiple: true
-      - run: cp deploy/agent/install.sh deploy/agent/uninstall.sh deploy/agent/vlan-setup.sh deploy/agent/nms-agent.service deploy/agent/nms-agent-console.sh deploy/agent/nms-agent-console.service dist/
+      - run: cp deploy/agent/install.sh deploy/agent/uninstall.sh deploy/agent/vlan-setup.sh deploy/agent/nms-agent.service deploy/agent/nms-agent-guard.sh deploy/agent/nms-agent-console.sh deploy/agent/nms-agent-console.service dist/
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*

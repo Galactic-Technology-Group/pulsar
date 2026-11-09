@@ -8,6 +8,9 @@ Wants=network-online.target
 Type=notify
 User=nms-agent
 Group=nms-agent
+# Rolls back a self-update whose binary keeps failing to start; a no-op otherwise. The leading '-' means a
+# missing or failing guard never blocks the agent from starting.
+ExecStartPre=-/opt/nms-agent/nms-agent-guard.sh
 ExecStart=/opt/nms-agent/nms-agent
 WorkingDirectory=/opt/nms-agent
 Environment=DOTNET_gcServer=0

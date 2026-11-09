@@ -154,6 +154,15 @@ else
   echo "==> Keeping existing $CONF_DIR/agent.json and credentials"
 fi
 
+# ---- self-update rollback guard (systemd ExecStartPre) ----------------------------------------------------
+if [[ -f "$SRC_DIR/nms-agent-guard.sh" ]]; then
+  install -m 0755 -o root -g root "$SRC_DIR/nms-agent-guard.sh" "$INSTALL_DIR/nms-agent-guard.sh"
+elif curl -fsSL -o "$TMP/nms-agent-guard.sh" "$BASE_URL/nms-agent-guard.sh" 2>/dev/null; then
+  install -m 0755 -o root -g root "$TMP/nms-agent-guard.sh" "$INSTALL_DIR/nms-agent-guard.sh"
+else
+  echo "!!  nms-agent-guard.sh not found; crash-loop rollback is limited to the agent's own start-up check" >&2
+fi
+
 # ---- service ----------------------------------------------------------------------------------
 if [[ -f "$UNIT_SRC" ]]; then
   install -m 0644 "$UNIT_SRC" /etc/systemd/system/nms-agent.service

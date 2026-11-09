@@ -85,6 +85,19 @@ public sealed class ApiClient
         return await resp.Content.ReadFromJsonAsync<AgentVersionInfo>(NmsJson.Options, ct);
     }
 
+    /// <summary>True when the API's health endpoint answers 2xx within 10 s. Used to tell a broken update from a WAN outage.</summary>
+    public async Task<bool> IsApiReachableAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(10));
+            using var resp = await _http.GetAsync("healthz", cts.Token);
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception) when (!ct.IsCancellationRequested) { return false; }
+    }
+
     public async Task DownloadAsync(string url, string destination, CancellationToken ct)
     {
         using var resp = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);

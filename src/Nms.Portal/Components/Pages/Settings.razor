@@ -85,10 +85,10 @@
 <section class="card">
     <h3>Agent releases</h3>
     <table class="grid">
-        <thead><tr><th>Version</th><th>Current</th><th>Published</th><th>x64</th><th>arm64</th></tr></thead>
-        <tbody>@foreach (var r in releases) { <tr><td>@r.Version</td><td>@(r.IsCurrent ? "✓" : "")</td><td>@r.PublishedUtc.ToLocalTime().ToString("g")</td><td class="small">@r.DownloadUrlX64</td><td class="small">@r.DownloadUrlArm64</td></tr> }</tbody>
+        <thead><tr><th>Version</th><th>Current</th><th>Rolled back</th><th>Published</th><th>x64</th><th>arm64</th></tr></thead>
+        <tbody>@foreach (var r in releases) { <tr><td>@r.Version</td><td>@(r.IsCurrent ? "✓" : "")</td><td>@if (r.RolledBackAgents > 0) { <span class="error">@r.RolledBackAgents agent(s)</span> }</td><td>@r.PublishedUtc.ToLocalTime().ToString("g")</td><td class="small">@r.DownloadUrlX64</td><td class="small">@r.DownloadUrlArm64</td></tr> }</tbody>
     </table>
-    <p class="small">Publishing makes a version current: connected agents download it immediately, agents that are offline pick it up at their next heartbeat. Each agent verifies the SHA-256, swaps its binary and restarts under systemd.</p>
+    <p class="small">Publishing makes a version current: connected agents download it immediately, agents that are offline pick it up at their next heartbeat. Each agent verifies the SHA-256, swaps its binary and restarts under systemd. An agent that crash-loops on the new version, or cannot reach the hub within 10 minutes while the API answers, restores its previous binary, blocks that version and shows up under <em>Rolled back</em>; publish a fixed release to move it on.</p>
     <div class="form-row">
         <input placeholder="GitHub tag, e.g. v0.1.3 (blank = latest)" @bind="importTag" style="width:18em" />
         <button class="primary" @onclick="ImportRelease" disabled="@importing">@(importing ? "Publishing…" : "Publish from GitHub release")</button>

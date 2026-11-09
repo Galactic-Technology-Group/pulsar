@@ -20,7 +20,7 @@ else
                     <td>@a.Name</td>
                     <td><StateBadge Agent="a.Status" /></td>
                     <td>@a.Hostname</td>
-                    <td>@a.Version</td>
+                    <td>@a.Version @if (a.RollbackFromVersion is not null) { <span class="error small" title="@a.RollbackReason">rolled back from @a.RollbackFromVersion</span> }</td>
                     <td title="@a.LastSeenUtc">@Ago(a.LastSeenUtc)</td>
                     <td class="small">@string.Join(", ", a.Interfaces.Select(i => $"{i.Name}{(i.VlanId is null ? "" : $" (VLAN {i.VlanId})")} {i.Address}/{i.PrefixLength}"))</td>
                     <td class="actions">

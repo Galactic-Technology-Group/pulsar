@@ -63,7 +63,7 @@ sed -e "s|__API_URL__|$API_URL|g" -e "s|__BASE_URL__|$BASE_URL|g" -e "s|__PASSWO
 
 if [[ -f "$AGENT_DIR/nms-agent-linux-x64" ]]; then cp "$AGENT_DIR/nms-agent-linux-x64" "$WORK/pulsar/nms-agent-linux-x64"
 else cp "$AGENT_DIR/nms-agent" "$WORK/pulsar/nms-agent-linux-x64"; fi
-cp "$REPO/deploy/agent/install.sh" "$REPO/deploy/agent/uninstall.sh" "$REPO/deploy/agent/vlan-setup.sh" \
+cp "$REPO/deploy/agent/install.sh" "$REPO/deploy/agent/uninstall.sh" "$REPO/deploy/agent/vlan-setup.sh" "$REPO/deploy/agent/nms-agent-guard.sh" \
    "$REPO/deploy/agent/nms-agent.service" "$REPO/deploy/agent/nms-agent-console.sh" "$REPO/deploy/agent/nms-agent-console.service" \
    "$WORK/pulsar/"
 chmod 0755 "$WORK/pulsar/"*.sh "$WORK/pulsar/nms-agent-linux-x64"

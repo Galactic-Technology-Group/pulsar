@@ -63,6 +63,18 @@ namespace Nms.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("name");
 
+                    b.Property<string>("RollbackFromVersion")
+                        .HasColumnType("text")
+                        .HasColumnName("rollback_from_version");
+
+                    b.Property<string>("RollbackReason")
+                        .HasColumnType("text")
+                        .HasColumnName("rollback_reason");
+
+                    b.Property<DateTimeOffset?>("RollbackUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("rollback_utc");
+
                     b.Property<string>("SecretHash")
                         .HasColumnType("text")
                         .HasColumnName("secret_hash");

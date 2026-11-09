@@ -25,7 +25,8 @@ public sealed class HubConnectionService(
     DiscoveryService discovery,
     ResultOutbox outbox,
     SelfUpdater updater,
-    ILogger<HubConnectionService> log) : BackgroundService
+    UpdateGuard guard,
+    ILogger<HubConnectionService> log) : BackgroundService, IHubStatus
 {
     private HubConnection? _hub;
     public bool IsConnected => _hub?.State == HubConnectionState.Connected;
@@ -130,7 +131,7 @@ public sealed class HubConnectionService(
             await Task.WhenAny(Task.Delay(interval, ct), closed.Task);
             if (ct.IsCancellationRequested || closed.Task.IsCompleted) break;
             if (_hub!.State != HubConnectionState.Connected) continue;
-            var hb = new HeartbeatDto(AgentVersion.Current, DateTimeOffset.UtcNow, interfaces.Enumerate(), (int)Math.Min(int.MaxValue, outbox.Count()));
+            var hb = new HeartbeatDto(AgentVersion.Current, DateTimeOffset.UtcNow, interfaces.Enumerate(), (int)Math.Min(int.MaxValue, outbox.Count()), guard.LastRollback);
             await SendSafe(_hub, nameof(IAgentHubServer.Heartbeat), hb, ct);
         }
     }

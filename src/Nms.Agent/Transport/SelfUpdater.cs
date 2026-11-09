@@ -5,10 +5,11 @@ using Nms.Shared.Contracts;
 namespace Nms.Agent.Transport;
 
 /// <summary>
-/// Downloads a new binary next to the running one, verifies SHA-256, swaps it in and exits so systemd restarts us.
+/// Downloads a new binary next to the running one, verifies SHA-256, keeps the running binary for rollback
+/// (<see cref="UpdateGuard"/>), swaps the new one in and exits so systemd restarts us.
 /// Only acts when the version differs and the file hash matches; otherwise it is a no-op.
 /// </summary>
-public sealed class SelfUpdater(ApiClient api, ILogger<SelfUpdater> log, TimeProvider? clock = null)
+public sealed class SelfUpdater(ApiClient api, UpdateGuard guard, ILogger<SelfUpdater> log, TimeProvider? clock = null)
 {
     /// <summary>After a failed attempt the same version is not retried for this long; the API re-offers it on every heartbeat.</summary>
     public static readonly TimeSpan RetryAfterFailure = TimeSpan.FromHours(1);
@@ -22,6 +23,10 @@ public sealed class SelfUpdater(ApiClient api, ILogger<SelfUpdater> log, TimePro
     {
         if (string.Equals(v.Version, AgentVersion.Current, StringComparison.OrdinalIgnoreCase)) return false;
         if (_failedVersion == v.Version && _clock.GetUtcNow() - _failedAt < RetryAfterFailure) return false;
+        // A version this box rolled back from stays blocked until a different release is published.
+        if (string.Equals(guard.LastRollback?.FailedVersion, v.Version, StringComparison.OrdinalIgnoreCase)) return false;
+        // Never stack updates: an unconfirmed binary would become the rollback target.
+        if (guard.IsPending) return false;
         return true;
     }
 
@@ -55,8 +60,10 @@ public sealed class SelfUpdater(ApiClient api, ILogger<SelfUpdater> log, TimePro
             }
 
             File.SetUnixFileMode(tmp, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
-            File.Move(tmp, exe, overwrite: true);
-            log.LogWarning("Agent updated to {Version}; exiting for systemd restart", v.Version);
+            guard.BeginUpdate(v.Version);
+            try { File.Move(tmp, exe, overwrite: true); }
+            catch { guard.AbandonUpdate(); throw; }
+            log.LogWarning("Agent updated to {Version} (previous binary kept at {Prev}); exiting for systemd restart", v.Version, guard.PreviousBinaryPath);
             Environment.Exit(0);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

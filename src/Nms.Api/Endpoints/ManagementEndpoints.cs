@@ -261,7 +261,14 @@ public static class ManagementEndpoints
         write.MapDelete("/maintenance/{id:guid}", async (Guid id, NmsDbContext db) =>
             await db.MaintenanceWindows.Where(m => m.Id == id).ExecuteDeleteAsync() > 0 ? Results.NoContent() : Results.NotFound());
 
-        admin.MapGet("/releases", (NmsDbContext db) => db.AgentReleases.AsNoTracking().OrderByDescending(r => r.PublishedUtc).ToListAsync());
+        admin.MapGet("/releases", async (NmsDbContext db) =>
+        {
+            var releases = await db.AgentReleases.AsNoTracking().OrderByDescending(r => r.PublishedUtc).ToListAsync();
+            var rolledBack = await db.Agents.Where(a => a.RollbackFromVersion != null)
+                .GroupBy(a => a.RollbackFromVersion!).Select(g => new { Version = g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Version, x => x.Count);
+            foreach (var r in releases) r.RolledBackAgents = rolledBack.GetValueOrDefault(r.Version);
+            return releases;
+        });
         admin.MapPost("/releases", async (ReleaseInput input, ReleasePublisher publisher, CancellationToken ct) =>
         {
             var r = await publisher.PublishAsync(input, ct);

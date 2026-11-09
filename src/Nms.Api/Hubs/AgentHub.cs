@@ -55,6 +55,7 @@ public sealed class AgentHub(NmsDbContext db, AgentRegistry registry, AgentConfi
             await portal.Clients.Group(PortalHub.SiteGroup(agent.SiteId)).AgentStatusChanged(agent.SiteId, agentId, AgentStatus.Online, agent.LastSeenUtc.Value);
         }
         UpsertInterfaces(db, agent, hb.Interfaces);
+        ApplyRollback(agent, hb.LastRollback, log);
         await db.SaveChangesAsync();
 
         // The config an agent fetched on connect was built from the version it reported last time. After a
@@ -68,6 +69,19 @@ public sealed class AgentHub(NmsDbContext db, AgentRegistry registry, AgentConfi
         var current = await db.AgentReleases.AsNoTracking().FirstOrDefaultAsync(r => r.IsCurrent);
         if (ReleasePublisher.PendingUpdate(current, hb.AgentVersion) is { } update)
             await Clients.Caller.UpdateAvailable(update);
+    }
+
+    /// <summary>Records a rollback the agent reports (logged once per rollback) and clears it once the agent stops reporting it.</summary>
+    internal static void ApplyRollback(Agent agent, UpdateRollbackDto? rb, ILogger log)
+    {
+        if (rb is null)
+        {
+            agent.RollbackFromVersion = null; agent.RollbackReason = null; agent.RollbackUtc = null;
+            return;
+        }
+        if (agent.RollbackUtc == rb.AtUtc && agent.RollbackFromVersion == rb.FailedVersion) return;
+        agent.RollbackFromVersion = rb.FailedVersion; agent.RollbackReason = rb.Reason; agent.RollbackUtc = rb.AtUtc;
+        log.LogWarning("Agent {Agent} ({Name}) rolled back from {Failed} to {Restored}: {Reason}", agent.Id, agent.Name, rb.FailedVersion, rb.RestoredVersion, rb.Reason);
     }
 
     public Task DiscoveryCompleted(DiscoveryResult result)
