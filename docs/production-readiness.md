@@ -1,5 +1,7 @@
 # Production readiness (v1)
 
+This is the v1 go-live gate of `docs/roadmap.md`; everything after go-live is planned there.
+
 What has to be true before the first production site is monitored by Pulsar, split into what the code and
 infrastructure already do, what is done per environment by hand, and what is still open. Tick items off here.
 

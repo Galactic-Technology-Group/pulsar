@@ -81,6 +81,6 @@ Run an agent against the local API (any Linux box or WSL):
 dotnet test Nms.sln
 ```
 
-## Phase 2 (planned)
+## Roadmap
 
-Azure Relay Hybrid Connections per site; agent terminates SSH (SSH.NET) and streams a PTY to an xterm.js page; YARP reverse-proxies device web UIs through the agent, with per-device subdomains for UIs that break under path prefixes. Session audit to Blob.
+`docs/roadmap.md` holds the full plan: the v1 go-live gate, then Phase 1 (SNMP and LLDP discovery, SNMP templates, brokered SSH/RDP/HTTP tunnels, PoE and PDU power control, geographic site map, read-only iOS app), Phase 2 (config backup, topology, security scans, reports, customer portal, iPad and Windows apps), Phase 3 (camera/VMS/access-control depth, Dynamics 365 Field Service work orders) and Phase 4 (MCP server, anomaly detection, OT/IoT). The remote-access design is sketched in `docs/architecture.md`.

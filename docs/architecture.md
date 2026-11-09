@@ -38,7 +38,9 @@ worker ──poll agents.last_seen_utc──▶ Offline + AgentOffline incident
 - Worker runs single-replica by design (cooldown memory and timers). It is idle most of the time.
 - Agent: 500 ICMP + 100 TCP checks per minute uses a few percent of a Pi 4 core; concurrency caps are configurable.
 
-## Phase 2 sketch
+## Remote access sketch (roadmap Phase 1)
+
+The design for the brokered tunnels listed in `docs/roadmap.md`.
 
 - One Azure Relay Hybrid Connection per site; the agent is the listener, the API the sender.
 - SSH: the API opens a stream over Relay, the agent connects to the device with SSH.NET on the right VLAN interface and pipes the PTY; the portal renders it with xterm.js over SignalR. Credentials from Key Vault references per device or entered per session; transcripts to Blob when audit is required.
