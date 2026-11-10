@@ -111,6 +111,8 @@ with the gateway verdict, its recovery, and no device flood.
 | SNMP templates: CPU, memory, temperature, fan, PSU, PoE budget, interface traffic/errors/discards | **new**: adds a `Snmp` check type and a template entity; agent gets an SNMP poller |
 | 30-day raw history, 13-month rollups | **partial**: raw retention is 90 days; rollups need a worker aggregate job because Azure's Timescale has no continuous aggregates |
 | Template library: Cisco, Meraki (API), Ubiquiti, Ruckus, Araknis, Fortinet, APC, CyberPower, Middle Atlantic, WattBox, Axis, Hanwha, Avigilon | **new**: ship as JSON in the repo, seeded on API start |
+| UPS status: battery charge, runtime remaining, on-battery/on-mains, load %, input/output voltage, battery self-test result and replace-battery flag | **new** (added 2026-11-10): one generic template on the standard UPS-MIB (RFC 1628) covers most network cards; APC (PowerNet-MIB) and CyberPower templates add the vendor-only fields. "On battery" and "replace battery" are state alerts that page at once; runtime and charge are thresholds. Same SNMP poller, no extra agent work. |
+| Environmental sensors: room temperature, humidity, water/leak and dry-contact inputs | **new** (added 2026-11-10): SNMP sensors such as APC NetBotz, the APC/CyberPower UPS card probes, AKCP sensorProbe and Middle Atlantic/WattBox units. Readings get per-sensor thresholds (e.g. above 30 °C, above 60 % RH) and the site card shows the latest values. Wireless (MQTT/LoRaWAN) sensors stay with Phase 4 OT/IoT reach. |
 
 **Alerting**
 
@@ -221,7 +223,7 @@ without a truck roll.
 - Anomaly detection and alert prioritisation (per-interface/device baselines, likely-cause ranking).
 - Multi-tenant white-label for subcontract/partner arrangements.
 - Bandwidth/usage billing exports per site; public API with the same scopes as the UI.
-- OT/IoT reach: Modbus, BACnet, MQTT for building systems and EV charging gear.
+- OT/IoT reach: Modbus, BACnet, MQTT for building systems and EV charging gear; wireless temperature, humidity and door sensors (MQTT, LoRaWAN gateways) through a new agent collector.
 
 ### Later / parked
 
@@ -276,6 +278,7 @@ Still open:
 - Fire alarm supervision: confirm what is permissible to monitor under Florida code and AHJ expectations before scoping.
 - Customer pricing: the flat per-site number and how it maps onto existing service-contract tiers.
 - SNMP write for PoE cycling vs vendor APIs only: writes need SNMPv3 auth/priv on every switch; decide the minimum we will support.
+- Which UPS and environmental-sensor models are deployed at contracted sites, so the first templates match real gear.
 
 ## 8. Source pages (checked 2026-11-08)
 
