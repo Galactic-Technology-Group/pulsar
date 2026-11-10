@@ -68,7 +68,7 @@ v1 go-live gate below.
 | Data model Tenant → Site → Device → Interface/Sensor; identity keyed on MAC | **partial** | Site → Device → Check exists, plus agent interfaces. No tenant. Devices are keyed by address; discovery already records MAC, so MAC identity is a migration, scheduled with SNMP discovery in Phase 1. |
 | Poller groups | **new** | Deferred: results already carry `agent_id`, so a second agent per site is a data-model no-op; leader election and work splitting are the Phase 2 HA item. |
 | RBAC skeleton admin / tech / read-only / customer | **partial** | Admin, Operator, Viewer exist as Entra app roles. Customer is new and needs the tenant level. |
-| Site location from the Field Service account address | **new** | Add `sites.address` and lat/long now (cheap); source it from Field Service in Phase 3. |
+| Site location from the Field Service account address | **partial** | `sites.address`, latitude and longitude exist (entered on the site page); sourcing them from Field Service is Phase 3. |
 | Exit: collector at HQ and one customer site; inventory within 15 min of install | **partial** | Dev VM agent at HQ is enrolled and monitored. First customer site is the v1 go-live. |
 
 ---
@@ -98,7 +98,7 @@ with the gateway verdict, its recovery, and no device flood.
 | ICMP sweep + ARP table per VLAN; hostnames by reverse DNS, mDNS and NetBIOS | **done** (agent 0.1.6) |
 | LLDP/CDP neighbour read, SNMP v2c/v3 system and interface tables, ONVIF WS-Discovery | **new** |
 | Vendor/model/type/serial classification (OUI table + SNMP sysObjectID + ONVIF device info) | **new** |
-| Device identity keyed on MAC (survives DHCP churn); address becomes an attribute | **new**, migration |
+| Device identity keyed on MAC (survives DHCP churn); address becomes an attribute | **partial**: `devices.mac_address` (unique per site) is filled by discovery and the device form; a sweep that finds a known MAC at a new address offers *Update address*. Automatic re-addressing waits for scheduled re-discovery |
 | Switch-port-to-device mapping with PoE draw per port (SNMP BRIDGE-MIB / POWER-ETHERNET-MIB) | **new** |
 | Additional-subnet and VLAN scanning across routed networks | **done** (routed and trunked modes, `docs/vlan-setup.md`) |
 | New-device alert, default on per site | **new**: scheduled re-discovery (LibreNMS does every 6 h) comparing against inventory |
@@ -126,7 +126,7 @@ with the gateway verdict, its recovery, and no device flood.
 | Item | State |
 |---|---|
 | Brokered tunnels (SSH, RDP, HTTPS, Telnet, generic TCP) through the agent; 60-minute expiry; per-device scope; full session log | **new**: Azure Relay Hybrid Connection per site, agent as listener, SSH.NET + xterm.js for SSH, YARP for HTTP, as sketched. RDP and generic TCP ride the same stream. |
-| PoE port power cycle (SNMP write; Meraki and UniFi APIs) | **new**: first write action, so the audit log lands here |
+| PoE port power cycle (SNMP write; Meraki and UniFi APIs) | **new**: the audit log it needs is **done** (every portal/API write, `docs/architecture.md`) |
 | PDU/UPS outlet control with outlet-to-device linking; Wake-on-LAN | **new** |
 
 **Web app: geographic site map**
@@ -134,7 +134,7 @@ with the gateway verdict, its recovery, and no device flood.
 - Map view as a landing-page option beside the site tiles; one pin per site coloured by worst open incident; clustering at state/metro zoom.
 - Pin → site card (open incidents, device count, agent heartbeat, gateway state, last incident) → site detail.
 - Filter by customer, SLA tier, alert state; search by address or site name.
-- Provider: Azure Maps (already in the Azure footprint) or MapKit JS. Decide in Phase 1 with tile cost per view in hand. Needs `sites.address` and coordinates from the v1 list.
+- Provider: Azure Maps (already in the Azure footprint) or MapKit JS. Decide in Phase 1 with tile cost per view in hand. Site address and coordinates are in place.
 
 **Pulsar for iOS: status companion (read-only)**
 

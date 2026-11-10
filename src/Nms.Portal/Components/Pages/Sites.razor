@@ -17,6 +17,7 @@
                         <option value="@VlanMode.Trunked">Trunked (802.1Q sub-interfaces)</option>
                     </InputSelect>
                 </label>
+                <label>Address <InputText @bind-Value="input.Address" placeholder="street, city" style="min-width:18em" /></label>
                 <button type="submit" class="primary">Create</button>
             </div>
         </EditForm>
@@ -28,12 +29,13 @@
 else
 {
     <table class="grid">
-        <thead><tr><th>Name</th><th>Time zone</th><th>VLAN mode</th><th>Agents</th><th>Devices</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Address</th><th>Time zone</th><th>VLAN mode</th><th>Agents</th><th>Devices</th><th></th></tr></thead>
         <tbody>
         @foreach (var s in sites)
         {
             <tr>
                 <td><a href="sites/@s.Id">@s.Name</a></td>
+                <td class="small">@s.Address</td>
                 <td>@s.TimeZone</td>
                 <td>@s.VlanMode</td>
                 <td>@s.Agents.Count</td>
@@ -57,11 +59,11 @@ else
     private async Task Create()
     {
         error = null;
-        try { await Api.CreateSiteAsync(new SiteInput(input.Name, input.TimeZone, input.VlanMode)); input = new(); sites = await Api.GetSitesAsync(); }
+        try { await Api.CreateSiteAsync(new SiteInput(input.Name, input.TimeZone, input.VlanMode, input.Address)); input = new(); sites = await Api.GetSitesAsync(); }
         catch (ApiException ex) { error = ex.Message; }
     }
 
     private async Task Delete(Guid id) { await Api.DeleteSiteAsync(id); sites = await Api.GetSitesAsync(); }
 
-    private sealed class SiteForm { public string Name { get; set; } = ""; public string TimeZone { get; set; } = "UTC"; public VlanMode VlanMode { get; set; } }
+    private sealed class SiteForm { public string Name { get; set; } = ""; public string TimeZone { get; set; } = "UTC"; public VlanMode VlanMode { get; set; } public string? Address { get; set; } }
 }

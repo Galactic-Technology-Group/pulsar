@@ -1,0 +1,42 @@
+@page "/audit"
+@attribute [Authorize(Roles = "Nms.Admin,Nms.Operator")]
+@inject NmsApiClient Api
+
+<PageTitle>Audit log</PageTitle>
+<h1>Audit log</h1>
+<p class="small muted">Every change made through the portal or the management API: who, what, which object and the outcome. Kept indefinitely; request contents (for example channel secrets) are never stored.</p>
+
+<div class="form-row">
+    <label>Site
+        <select @bind="siteFilter" @bind:after="Load">
+            <option value="">All sites</option>
+            @foreach (var s in sites.OrderBy(s => s.Name)) { <option value="@s.Id">@s.Name</option> }
+        </select>
+    </label>
+    <label>Show <select @bind="take" @bind:after="Load"><option value="100">100</option><option value="500">500</option><option value="1000">1000</option></select></label>
+</div>
+
+@if (events is null) { <p class="muted">Loading…</p> }
+else if (events.Count == 0) { <p class="muted">No changes recorded yet.</p> }
+else
+{
+    <AuditTable Events="events" SiteNames="siteNames" />
+}
+
+@code {
+    private List<AuditEvent>? events;
+    private List<Site> sites = new();
+    private Dictionary<Guid, string> siteNames = new();
+    private string siteFilter = "";
+    private int take = 100;
+
+    protected override async Task OnInitializedAsync()
+    {
+        sites = await Api.GetSitesAsync();
+        siteNames = sites.ToDictionary(s => s.Id, s => s.Name);
+        await Load();
+    }
+
+    private async Task Load() =>
+        events = await Api.GetAuditAsync(Guid.TryParse(siteFilter, out var id) ? id : null, take);
+}

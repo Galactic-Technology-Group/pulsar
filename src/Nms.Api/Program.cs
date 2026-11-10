@@ -57,6 +57,7 @@ builder.Services.AddRateLimiter(o =>
 
 builder.Services.AddSingleton<AgentRegistry>();
 builder.Services.AddSingleton<DiscoveryStore>();
+builder.Services.AddSingleton<AuditFilter>();
 builder.Services.AddScoped<AgentConfigBuilder>();
 builder.Services.AddScoped<ResultIngestService>();
 builder.Services.AddScoped<ClaimService>();

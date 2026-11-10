@@ -17,8 +17,9 @@ public static class ManagementEndpoints
     public static IEndpointRouteBuilder MapManagementEndpoints(this IEndpointRouteBuilder app)
     {
         var api = app.MapGroup("/api").RequireAuthorization(Policies.User).WithTags("Management");
-        var write = api.MapGroup("").RequireAuthorization(p => p.RequireRole(Policies.Admin, Policies.Operator));
-        var admin = api.MapGroup("").RequireAuthorization(p => p.RequireRole(Policies.Admin));
+        // Every write is audited (AuditFilter): attach new write endpoints to these groups, never to "api".
+        var write = api.MapGroup("").RequireAuthorization(p => p.RequireRole(Policies.Admin, Policies.Operator)).AddEndpointFilter<AuditFilter>();
+        var admin = api.MapGroup("").RequireAuthorization(p => p.RequireRole(Policies.Admin)).AddEndpointFilter<AuditFilter>();
 
         // ---- Dashboard -------------------------------------------------------------------------
         api.MapGet("/dashboard/sites", async (NmsDbContext db, CancellationToken ct) =>
@@ -50,7 +51,9 @@ public static class ManagementEndpoints
             await db.Sites.AsNoTracking().Include(s => s.Agents).ThenInclude(a => a.Interfaces).FirstOrDefaultAsync(s => s.Id == id) is { } s ? Results.Ok(s) : Results.NotFound());
         write.MapPost("/sites", async (SiteInput input, NmsDbContext db) =>
         {
+            if (SiteLocationError(input) is { } bad) return Results.BadRequest(new { error = bad });
             var s = new Site { Id = Guid.NewGuid(), Name = input.Name.Trim(), TimeZone = input.TimeZone, VlanMode = input.VlanMode };
+            ApplyLocation(s, input);
             db.Sites.Add(s);
             db.Devices.Add(GatewayCheck.Create(s.Id));   // built-in outside-in cross-check, address set later
             await db.SaveChangesAsync();
@@ -59,7 +62,9 @@ public static class ManagementEndpoints
         write.MapPut("/sites/{id:guid}", async (Guid id, SiteInput input, NmsDbContext db, AgentConfigBuilder cfg) =>
         {
             var s = await db.Sites.FindAsync(id); if (s is null) return Results.NotFound();
+            if (SiteLocationError(input) is { } bad) return Results.BadRequest(new { error = bad });
             s.Name = input.Name.Trim(); s.TimeZone = input.TimeZone; s.VlanMode = input.VlanMode;
+            ApplyLocation(s, input);
             await db.SaveChangesAsync(); await cfg.NotifySiteChangedAsync(id);
             return Results.Ok(s);
         });
@@ -138,7 +143,9 @@ public static class ManagementEndpoints
         write.MapPost("/sites/{siteId:guid}/devices", async (Guid siteId, DeviceInput input, NmsDbContext db, AgentConfigBuilder cfg) =>
         {
             if (!await db.Sites.AnyAsync(s => s.Id == siteId)) return Results.NotFound();
-            var d = new Device { Id = Guid.NewGuid(), SiteId = siteId, Name = input.Name.Trim(), Address = input.Address.Trim(), VlanId = input.VlanId, IsCritical = input.IsCritical, Tags = input.Tags ?? [], Notes = input.Notes };
+            if (await MacError(db, siteId, input.MacAddress, exceptDevice: null) is { } macError) return macError;
+            var d = new Device { Id = Guid.NewGuid(), SiteId = siteId, Name = input.Name.Trim(), Address = input.Address.Trim(), VlanId = input.VlanId, IsCritical = input.IsCritical, Tags = input.Tags ?? [], Notes = input.Notes,
+                MacAddress = MacAddresses.Normalize(input.MacAddress) };
             // Every device gets an ICMP check by default; the portal can add port/HTTP checks afterwards.
             d.Checks.Add(new Check { Id = Guid.NewGuid(), Type = CheckType.Icmp });
             db.Devices.Add(d); await db.SaveChangesAsync(); await cfg.NotifySiteChangedAsync(siteId);
@@ -147,7 +154,9 @@ public static class ManagementEndpoints
         write.MapPut("/devices/{id:guid}", async (Guid id, DeviceInput input, NmsDbContext db, AgentConfigBuilder cfg) =>
         {
             var d = await db.Devices.FindAsync(id); if (d is null) return Results.NotFound();
+            if (await MacError(db, d.SiteId, input.MacAddress, exceptDevice: d.Id) is { } macError) return macError;
             d.Name = input.Name.Trim(); d.Address = input.Address.Trim(); d.VlanId = input.VlanId; d.IsCritical = input.IsCritical; d.Tags = input.Tags ?? []; d.Notes = input.Notes;
+            d.MacAddress = MacAddresses.Normalize(input.MacAddress);
             await db.SaveChangesAsync(); await cfg.NotifySiteChangedAsync(d.SiteId);
             return Results.Ok(d);
         });
@@ -221,6 +230,15 @@ public static class ManagementEndpoints
             await db.SaveChangesAsync(); return Results.Ok(i);
         });
 
+        // ---- Audit -----------------------------------------------------------------------------
+        write.MapGet("/audit", async (Guid? siteId, int? take, DateTimeOffset? before, NmsDbContext db, CancellationToken ct) =>
+        {
+            var q = db.AuditEvents.AsNoTracking();
+            if (siteId is { } s) q = q.Where(e => e.SiteId == s);
+            if (before is { } b) q = q.Where(e => e.TimeUtc < b);
+            return await q.OrderByDescending(e => e.TimeUtc).Take(Math.Clamp(take ?? 100, 1, 1000)).ToListAsync(ct);
+        });
+
         // ---- Settings --------------------------------------------------------------------------
         admin.MapGet("/channels", (NmsDbContext db) => db.NotificationChannels.AsNoTracking().OrderBy(c => c.Name).ToListAsync());
         admin.MapPost("/channels", async (ChannelInput input, NmsDbContext db) =>
@@ -287,6 +305,31 @@ public static class ManagementEndpoints
         admin.MapGet("/releases/source", (GitHubReleaseSource github) => Results.Ok(new { github.Repo }));
 
         return app;
+    }
+
+    /// <summary>Latitude and longitude come together and within WGS 84 ranges; null when the input is fine.</summary>
+    internal static string? SiteLocationError(SiteInput input)
+    {
+        if (input.Latitude is null != input.Longitude is null) return "Set both latitude and longitude, or neither.";
+        if (input.Latitude is { } lat && (lat < -90 || lat > 90)) return "Latitude must be between -90 and 90.";
+        if (input.Longitude is { } lon && (lon < -180 || lon > 180)) return "Longitude must be between -180 and 180.";
+        return null;
+    }
+
+    private static void ApplyLocation(Site s, SiteInput input)
+    {
+        s.Address = string.IsNullOrWhiteSpace(input.Address) ? null : input.Address.Trim();
+        s.Latitude = input.Latitude; s.Longitude = input.Longitude;
+    }
+
+    /// <summary>400 for a malformed MAC, 409 when another device at the site already has it; null when fine.</summary>
+    internal static async Task<IResult?> MacError(NmsDbContext db, Guid siteId, string? mac, Guid? exceptDevice)
+    {
+        if (!MacAddresses.IsValidOrEmpty(mac)) return Results.BadRequest(new { error = $"'{mac}' is not a MAC address." });
+        var norm = MacAddresses.Normalize(mac);
+        if (norm is null) return null;
+        var other = await db.Devices.Where(d => d.SiteId == siteId && d.MacAddress == norm && d.Id != exceptDevice).Select(d => d.Name).FirstOrDefaultAsync();
+        return other is null ? null : Results.Conflict(new { error = $"Device {other} at this site already has MAC {norm}." });
     }
 
     private static void Apply(Check c, CheckInput i)

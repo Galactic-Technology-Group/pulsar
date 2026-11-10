@@ -38,6 +38,16 @@ worker ──poll agents.last_seen_utc──▶ Offline + AgentOffline incident
 - Worker runs single-replica by design (cooldown memory and timers). It is idle most of the time.
 - Agent: 500 ICMP + 100 TCP checks per minute uses a few percent of a Pi 4 core; concurrency caps are configurable.
 
+## Audit log
+
+Every write through the management API (the Operator and Admin route groups) passes `AuditFilter`, which stores one
+row in `nms.audit_events`: time, user (name and Entra object id), method and route template, target type and id, the
+site, the HTTP status, and a readable target name captured *before* the change, so deletes stay legible. Creates are
+recorded against the new object (from the `Location` of the 201). Request bodies are never stored, since channel
+settings hold webhook URLs. Rows are kept indefinitely as client-facing evidence. The portal shows them under
+**Audit** and per site under *Recent changes*. New write endpoints are audited automatically as long as they hang off
+the `write` or `admin` group in `ManagementEndpoints`.
+
 ## Remote access sketch (roadmap Phase 1)
 
 The design for the brokered tunnels listed in `docs/roadmap.md`.

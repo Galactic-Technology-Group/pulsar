@@ -1,0 +1,27 @@
+@* One row per audited write; shared by the Audit page and the site page's recent activity. *@
+<table class="grid">
+    <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Object</th>@if (SiteNames is not null) { <th>Site</th> }<th>Result</th></tr></thead>
+    <tbody>
+    @foreach (var e in Events)
+    {
+        <tr class="@(e.Status >= 400 ? "muted" : "")">
+            <td title="@e.TimeUtc.ToString("u")">@e.TimeUtc.ToLocalTime().ToString("g")</td>
+            <td>@e.Actor</td>
+            <td class="small">@Describe(e.Action)</td>
+            <td class="small">@(e.Detail ?? (e.TargetType is null ? "" : $"{e.TargetType} {e.TargetId?.ToString()[..8]}"))</td>
+            @if (SiteNames is not null) { <td class="small">@(e.SiteId is { } s && SiteNames.TryGetValue(s, out var n) ? n : "")</td> }
+            <td class="@(e.Status >= 400 ? "error" : "")">@e.Status</td>
+        </tr>
+    }
+    </tbody>
+</table>
+
+@code {
+    [Parameter, EditorRequired] public List<AuditEvent> Events { get; set; } = new();
+    /// <summary>When set, a Site column is shown using these names.</summary>
+    [Parameter] public Dictionary<Guid, string>? SiteNames { get; set; }
+
+    /// <summary>"DELETE /api/devices/{id:guid}" → "DELETE devices/{id}".</summary>
+    private static string Describe(string action) =>
+        System.Text.RegularExpressions.Regex.Replace(action.Replace("/api/", " "), @"\{(\w+)(:[^}]*)?\}", "{$1}").Replace("  ", " ");
+}

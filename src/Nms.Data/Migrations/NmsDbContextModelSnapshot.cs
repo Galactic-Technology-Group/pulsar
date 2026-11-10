@@ -320,6 +320,68 @@ namespace Nms.Data.Migrations
                     b.ToTable("alert_rules", "nms");
                 });
 
+            modelBuilder.Entity("Nms.Data.Entities.AuditEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("action");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("actor");
+
+                    b.Property<string>("ActorId")
+                        .HasColumnType("text")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("detail");
+
+                    b.Property<Guid?>("SiteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("site_id");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<Guid?>("TargetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_id");
+
+                    b.Property<string>("TargetType")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("target_type");
+
+                    b.Property<DateTimeOffset>("TimeUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("time_utc");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TimeUtc")
+                        .IsDescending();
+
+                    b.HasIndex("SiteId", "TimeUtc")
+                        .IsDescending(false, true);
+
+                    b.ToTable("audit_events", "nms");
+                });
+
             modelBuilder.Entity("Nms.Data.Entities.Check", b =>
                 {
                     b.Property<Guid>("Id")
@@ -455,6 +517,11 @@ namespace Nms.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("kind");
 
+                    b.Property<string>("MacAddress")
+                        .HasMaxLength(17)
+                        .HasColumnType("character varying(17)")
+                        .HasColumnName("mac_address");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
@@ -482,6 +549,10 @@ namespace Nms.Data.Migrations
                     b.HasIndex("Tags");
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Tags"), "gin");
+
+                    b.HasIndex("SiteId", "MacAddress")
+                        .IsUnique()
+                        .HasFilter("mac_address IS NOT NULL");
 
                     b.HasIndex("SiteId", "Address", "VlanId")
                         .IsUnique();
@@ -624,9 +695,21 @@ namespace Nms.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("Address")
+                        .HasColumnType("text")
+                        .HasColumnName("address");
+
                     b.Property<DateTimeOffset>("CreatedUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_utc");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("latitude");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("longitude");
 
                     b.Property<string>("Name")
                         .IsRequired()

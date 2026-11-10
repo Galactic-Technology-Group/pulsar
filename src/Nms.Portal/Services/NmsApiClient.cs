@@ -85,6 +85,8 @@ public sealed class NmsApiClient(HttpClient http, IServiceProvider services)
     public Task<MaintenanceWindow> CreateMaintenanceAsync(MaintenanceInput input) => Post<MaintenanceWindow>("api/maintenance", input);
     public Task DeleteMaintenanceAsync(Guid id) => Delete($"api/maintenance/{id}");
     public Task<List<AgentRelease>> GetReleasesAsync() => Get<List<AgentRelease>>("api/releases");
+    public Task<List<AuditEvent>> GetAuditAsync(Guid? siteId = null, int take = 100) =>
+        Get<List<AuditEvent>>($"api/audit?take={take}{(siteId is null ? "" : $"&siteId={siteId}")}");
     public Task<AgentRelease> CreateReleaseAsync(ReleaseInput input) => Post<AgentRelease>("api/releases", input);
     public Task<AgentRelease> ImportReleaseAsync(string? tag) => Post<AgentRelease>("api/releases/import", new ReleaseImportRequest(tag));
 

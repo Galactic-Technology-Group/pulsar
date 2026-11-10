@@ -17,6 +17,7 @@ public class NmsDbContext(DbContextOptions<NmsDbContext> options) : DbContext(op
     public DbSet<MaintenanceWindow> MaintenanceWindows => Set<MaintenanceWindow>();
     public DbSet<AgentRelease> AgentReleases => Set<AgentRelease>();
     public DbSet<AgentClaim> AgentClaims => Set<AgentClaim>();
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -40,6 +41,8 @@ public class NmsDbContext(DbContextOptions<NmsDbContext> options) : DbContext(op
         b.Entity<Device>(e =>
         {
             e.HasIndex(x => new { x.SiteId, x.Address, x.VlanId }).IsUnique();
+            e.HasIndex(x => new { x.SiteId, x.MacAddress }).IsUnique().HasFilter("mac_address IS NOT NULL");
+            e.Property(x => x.MacAddress).HasMaxLength(17);
             e.HasIndex(x => x.Tags).HasMethod("gin");
             e.HasOne(x => x.Site).WithMany(s => s.Devices).HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -73,6 +76,16 @@ public class NmsDbContext(DbContextOptions<NmsDbContext> options) : DbContext(op
         b.Entity<MaintenanceWindow>(e => e.HasIndex(x => new { x.StartUtc, x.EndUtc }));
 
         b.Entity<AgentRelease>(e => e.HasIndex(x => x.Version).IsUnique());
+
+        b.Entity<AuditEvent>(e =>
+        {
+            e.HasIndex(x => x.TimeUtc).IsDescending();
+            e.HasIndex(x => new { x.SiteId, x.TimeUtc }).IsDescending(false, true);
+            e.Property(x => x.Actor).HasMaxLength(256);
+            e.Property(x => x.Action).HasMaxLength(256);
+            e.Property(x => x.TargetType).HasMaxLength(64);
+            e.Property(x => x.Detail).HasMaxLength(512);
+        });
 
         b.Entity<AgentClaim>(e =>
         {

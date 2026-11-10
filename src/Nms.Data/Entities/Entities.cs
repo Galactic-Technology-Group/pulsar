@@ -8,6 +8,11 @@ public class Site
     public string Name { get; set; } = "";
     public string TimeZone { get; set; } = "UTC";
     public VlanMode VlanMode { get; set; } = VlanMode.Routed;
+    /// <summary>Street address, free text. Feeds the geographic site map; sourced from Field Service later.</summary>
+    public string? Address { get; set; }
+    /// <summary>WGS 84 coordinates for the map pin; both set or both null.</summary>
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
     public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;
     public ICollection<Agent> Agents { get; set; } = new List<Agent>();
     public ICollection<Device> Devices { get; set; } = new List<Device>();
@@ -59,6 +64,11 @@ public class Device
     public Site Site { get; set; } = null!;
     public string Name { get; set; } = "";
     public string Address { get; set; } = "";
+    /// <summary>
+    /// Hardware identity (canonical lowercase aa:bb:cc:dd:ee:ff, unique per site). Survives DHCP churn: discovery
+    /// matches on it first and offers to move the device when its address changed.
+    /// </summary>
+    public string? MacAddress { get; set; }
     public int? VlanId { get; set; }
     public bool IsCritical { get; set; } = true;
     public string[] Tags { get; set; } = Array.Empty<string>();
@@ -192,4 +202,25 @@ public class AgentRelease
     /// <summary>Filled by the releases endpoint: agents currently reporting a rollback from this version. Not stored.</summary>
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public int RolledBackAgents { get; set; }
+}
+
+/// <summary>
+/// One human write through the management API: who did what to which object, at which site, and the HTTP outcome.
+/// Kept indefinitely as client-facing audit evidence; never stores request bodies.
+/// </summary>
+public class AuditEvent
+{
+    public long Id { get; set; }
+    public DateTimeOffset TimeUtc { get; set; }
+    public string Actor { get; set; } = "";
+    /// <summary>Entra object id of the user, when present.</summary>
+    public string? ActorId { get; set; }
+    /// <summary>HTTP method and route template, e.g. "DELETE /api/devices/{id:guid}".</summary>
+    public string Action { get; set; } = "";
+    public string? TargetType { get; set; }
+    public Guid? TargetId { get; set; }
+    public Guid? SiteId { get; set; }
+    public int Status { get; set; }
+    /// <summary>Human-readable target, captured before the change ("device core-sw (10.0.0.2)").</summary>
+    public string? Detail { get; set; }
 }

@@ -7,6 +7,9 @@
         <NavLink href="sites">Sites</NavLink>
         <NavLink href="incidents">Incidents</NavLink>
         <NavLink href="agents/pending">Pending agents</NavLink>
+        <AuthorizeView Roles="Nms.Admin,Nms.Operator">
+            <NavLink href="audit">Audit</NavLink>
+        </AuthorizeView>
         <AuthorizeView Roles="Nms.Admin">
             <NavLink href="settings">Settings</NavLink>
         </AuthorizeView>

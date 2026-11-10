@@ -7,7 +7,20 @@
 else
 {
     <PageTitle>@site.Name</PageTitle>
-    <h1>@site.Name <small class="muted">@site.VlanMode</small></h1>
+    <h1>@site.Name <small class="muted">@site.VlanMode @(site.Address is null ? "" : " · " + site.Address)</small></h1>
+
+    <AuthorizeView Roles="Nms.Admin,Nms.Operator">
+        <details class="card">
+            <summary>Location @(site.Latitude is null ? "(no map position)" : $"({site.Latitude:0.#####}, {site.Longitude:0.#####})")</summary>
+            <div class="form-row">
+                <label>Address <input @bind="siteAddress" placeholder="street, city, state" style="min-width:22em" /></label>
+                <label>Latitude <input type="number" step="any" @bind="siteLat" style="width:9em" /></label>
+                <label>Longitude <input type="number" step="any" @bind="siteLon" style="width:9em" /></label>
+                <button class="small" @onclick="SaveLocation">Save</button>
+            </div>
+            <p class="small muted">Coordinates place the site on the map view (roadmap Phase 1). Copy them from any map as decimal degrees.</p>
+        </details>
+    </AuthorizeView>
 
     <section class="card">
         <h3>Agents</h3>
@@ -71,10 +84,12 @@ else
                     <tbody>
                     @foreach (var h in discovery.Hosts)
                     {
-                        var known = devices.Any(d => d.Address == h.Address);
+                        var byMac = h.MacAddress is null ? null : devices.FirstOrDefault(d => d.MacAddress == h.MacAddress);
+                        var known = byMac is not null || devices.Any(d => d.Address == h.Address);
+                        var moved = byMac is not null && byMac.Address != h.Address;
                         <tr>
-                            <td>@h.Address</td><td>@(h.Hostname ?? "-") @if (h.HostnameSource is not null and not "dns") { <small class="muted">(@h.HostnameSource)</small> }</td><td>@h.MacAddress</td><td>@(h.LatencyMs is null ? "-" : h.LatencyMs + " ms")</td>
-                            <td>@if (known) { <span class="muted">monitored</span> } else { <button class="small" @onclick="() => AddDiscovered(h)">Monitor</button> }</td>
+                            <td>@h.Address @if (moved) { <span class="error small">(@byMac!.Name was @byMac.Address)</span> }</td><td>@(h.Hostname ?? "-") @if (h.HostnameSource is not null and not "dns") { <small class="muted">(@h.HostnameSource)</small> }</td><td>@h.MacAddress</td><td>@(h.LatencyMs is null ? "-" : h.LatencyMs + " ms")</td>
+                            <td>@if (moved) { <button class="small" @onclick="() => MoveDevice(byMac!, h.Address)">Update address</button> } else if (known) { <span class="muted">monitored</span> } else { <button class="small" @onclick="() => AddDiscovered(h)">Monitor</button> }</td>
                         </tr>
                     }
                     </tbody>
@@ -117,6 +132,7 @@ else
             <div class="form-row">
                 <input placeholder="Name" @bind="dev.Name" />
                 <input placeholder="IP or hostname" @bind="dev.Address" />
+                <input placeholder="MAC (optional)" @bind="dev.Mac" style="width:11em" />
                 <input type="number" placeholder="VLAN" @bind="dev.VlanId" style="width:6em" />
                 <input placeholder="tags, comma separated" @bind="dev.Tags" />
                 <label><input type="checkbox" @bind="dev.IsCritical" /> critical</label>
@@ -125,13 +141,14 @@ else
             @if (error is not null) { <p class="error">@error</p> }
         </AuthorizeView>
         <table class="grid">
-            <thead><tr><th>Device</th><th>Address</th><th>VLAN</th><th>Checks</th><th>Tags</th></tr></thead>
+            <thead><tr><th>Device</th><th>Address</th><th>MAC</th><th>VLAN</th><th>Checks</th><th>Tags</th></tr></thead>
             <tbody>
             @foreach (var d in devices.Where(d => d.Kind == DeviceKind.Host).OrderBy(d => Worst(d)).ThenBy(d => d.Name))
             {
                 <tr class="@(d.IsCritical ? "" : "muted")">
                     <td><a href="devices/@d.Id">@d.Name</a>@(d.IsCritical ? "" : " (non-critical)")</td>
                     <td>@d.Address</td>
+                    <td class="small">@d.MacAddress</td>
                     <td>@d.VlanId</td>
                     <td>@foreach (var c in d.Checks) { <StateBadge State="c.State" Title="@CheckLabel(c)" /> }</td>
                     <td class="small">@string.Join(", ", d.Tags)</td>
@@ -140,9 +157,20 @@ else
             </tbody>
         </table>
     </section>
+
+    <AuthorizeView Roles="Nms.Admin,Nms.Operator">
+        <details class="card" @ontoggle="LoadActivity">
+            <summary>Recent changes at this site</summary>
+            @if (activity is null) { <p class="muted small">Loading…</p> }
+            else if (activity.Count == 0) { <p class="muted small">No changes recorded yet.</p> }
+            else { <AuditTable Events="activity" /> <p class="small"><a href="audit">Full audit log</a></p> }
+        </details>
+    </AuthorizeView>
 }
 
 @code {
+    private List<AuditEvent>? activity;
+    private async Task LoadActivity() { activity ??= await Api.GetAuditAsync(SiteId, 20); }
     [Parameter] public Guid SiteId { get; set; }
     private Site? site;
     private List<Agent> agents = new();
@@ -170,6 +198,7 @@ else
     private async Task Load()
     {
         site = await Api.GetSiteAsync(SiteId);
+        if (site is not null) { siteAddress = site.Address; siteLat = site.Latitude; siteLon = site.Longitude; }
         agents = await Api.GetAgentsAsync(SiteId);
         devices = await Api.GetDevicesAsync(SiteId);
         gateway = devices.FirstOrDefault(d => d.Kind == DeviceKind.Gateway);
@@ -187,7 +216,7 @@ else
         error = null;
         try
         {
-            await Api.UpdateDeviceAsync(gateway.Id, new DeviceInput(gateway.Name, gatewayAddress.Trim(), null, gateway.IsCritical, gateway.Tags, gateway.Notes));
+            await Api.UpdateDeviceAsync(gateway.Id, new DeviceInput(gateway.Name, gatewayAddress.Trim(), null, gateway.IsCritical, gateway.Tags, gateway.Notes, gateway.MacAddress));
             if (gateway.Checks.FirstOrDefault(c => c.Type == CheckType.GatewayPing) is { } gc && gc.Port != gatewayPort)
                 await Api.UpdateCheckAsync(gc.Id, new CheckInput(CheckType.GatewayPing, gatewayPort, null, null, null, gc.IntervalSec, gc.TimeoutMs, gc.FailureThreshold, gc.Enabled));
             devices = await Api.GetDevicesAsync(SiteId);
@@ -225,8 +254,32 @@ else
     {
         // Name the device after its hostname when DNS knows one (short label, since the site is implied); fall back to the address.
         var name = h.Hostname is null ? h.Address : h.Hostname.Split('.')[0];
-        await Api.CreateDeviceAsync(SiteId, new DeviceInput(name, h.Address, discoveryVlan, true, [], h.MacAddress is null ? null : $"MAC {h.MacAddress}"));
+        await Api.CreateDeviceAsync(SiteId, new DeviceInput(name, h.Address, discoveryVlan, true, [], null, h.MacAddress));
         devices = await Api.GetDevicesAsync(SiteId);
+    }
+    /// <summary>DHCP gave a known device (same MAC) a new address: keep its checks and history, change the address.</summary>
+    private async Task MoveDevice(Device d, string address)
+    {
+        error = null;
+        try
+        {
+            await Api.UpdateDeviceAsync(d.Id, new DeviceInput(d.Name, address, d.VlanId, d.IsCritical, d.Tags, d.Notes, d.MacAddress));
+            devices = await Api.GetDevicesAsync(SiteId);
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+    private string? siteAddress;
+    private double? siteLat, siteLon;
+    private async Task SaveLocation()
+    {
+        if (site is null) return;
+        error = null;
+        try
+        {
+            site = await Api.UpdateSiteAsync(site.Id, new SiteInput(site.Name, site.TimeZone, site.VlanMode, siteAddress, siteLat, siteLon));
+            await Load();
+        }
+        catch (Exception ex) { error = ex.Message; }
     }
 
     private async Task CreateDevice()
@@ -235,7 +288,7 @@ else
         try
         {
             var tags = (dev.Tags ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            await Api.CreateDeviceAsync(SiteId, new DeviceInput(dev.Name, dev.Address, dev.VlanId, dev.IsCritical, tags));
+            await Api.CreateDeviceAsync(SiteId, new DeviceInput(dev.Name, dev.Address, dev.VlanId, dev.IsCritical, tags, null, dev.Mac));
             dev = new(); devices = await Api.GetDevicesAsync(SiteId);
         }
         catch (ApiException ex) { error = ex.Message; }
@@ -251,5 +304,5 @@ else
         var s => $"{(int)s.TotalDays}d ago",
     };
 
-    private sealed class DeviceForm { public string Name { get; set; } = ""; public string Address { get; set; } = ""; public int? VlanId { get; set; } public string? Tags { get; set; } public bool IsCritical { get; set; } = true; }
+    private sealed class DeviceForm { public string Name { get; set; } = ""; public string Address { get; set; } = ""; public int? VlanId { get; set; } public string? Tags { get; set; } public bool IsCritical { get; set; } = true; public string? Mac { get; set; } }
 }
