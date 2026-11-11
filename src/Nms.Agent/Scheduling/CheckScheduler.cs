@@ -38,6 +38,7 @@ public sealed class CheckScheduler : IDisposable
             [CheckType.Icmp] = new SemaphoreSlim(options.Value.MaxConcurrentIcmp),
             [CheckType.TcpPort] = new SemaphoreSlim(options.Value.MaxConcurrentTcp),
             [CheckType.Http] = new SemaphoreSlim(options.Value.MaxConcurrentHttp),
+            [CheckType.Snmp] = new SemaphoreSlim(options.Value.MaxConcurrentSnmp),
         };
     }
 
@@ -107,7 +108,7 @@ public sealed class CheckScheduler : IDisposable
         try
         {
             var outcome = await probe.RunAsync(def, target, source, ct);
-            Emit(new CheckResultDto(def.CheckId, DateTimeOffset.UtcNow, outcome.Ok, outcome.LatencyMs, outcome.Detail));
+            Emit(new CheckResultDto(def.CheckId, DateTimeOffset.UtcNow, outcome.Ok, outcome.LatencyMs, outcome.Detail, outcome.Metrics));
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)

@@ -64,7 +64,11 @@ svg.chart .axis { stroke: var(--border); stroke-width: 1; }
 svg.chart .line { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 svg.chart .down-band { fill: var(--down); opacity: .35; } svg.chart .degraded-band { fill: var(--degraded); opacity: .3; }
 svg.chart .label { fill: var(--muted); font-size: 10px; }
+svg.chart .band { fill: var(--accent); opacity: .15; }
+svg.chart .limit { stroke: var(--down); stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+tr.breached td { color: var(--down); font-weight: 600; }
 
 /* Pending agents */
 .claim .claim-head { display: flex; gap: 20px; align-items: center; margin-bottom: 8px; }
 .claim .code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 28px; font-weight: 700; letter-spacing: 2px; padding: 8px 14px; border: 2px dashed var(--accent); border-radius: 10px; color: var(--accent); white-space: nowrap; }
+.clickable { cursor: pointer; }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Nms.Api.Hubs;
@@ -6,11 +7,13 @@ using Nms.Data.Entities;
 using Nms.Shared;
 using Nms.Shared.Contracts;
 using Nms.Shared.Hubs;
+using Nms.Shared.Snmp;
 
 namespace Nms.Api.Services;
 
 /// <summary>
-/// Persists a batch of results, advances each check's state machine, and opens/closes incidents.
+/// Persists a batch of results, advances each check's state machine, and opens/closes incidents. SNMP readings are stored
+/// in metric_samples and the newest ones are compared with the check's thresholds.
 /// Notifications are sent by the worker, which polls incidents with Notified == false.
 /// </summary>
 public sealed class ResultIngestService(NmsDbContext db, IHubContext<PortalHub, IPortalClient> portal, ILogger<ResultIngestService> log)
@@ -45,6 +48,7 @@ public sealed class ResultIngestService(NmsDbContext db, IHubContext<PortalHub, 
             .ToListAsync(ct);
 
         var events = new List<(Check check, StateTransition t, DateTimeOffset at)>();
+        var newestReadings = new Dictionary<Guid, (CheckResultDto result, Check check)>();
 
         foreach (var r in results.OrderBy(r => r.Time))
         {
@@ -55,6 +59,7 @@ public sealed class ResultIngestService(NmsDbContext db, IHubContext<PortalHub, 
 
             db.CheckResults.Add(new CheckResult { CheckId = r.CheckId, AgentId = agentId, Time = r.Time, Ok = r.Ok, LatencyMs = r.LatencyMs, Detail = Truncate(r.Detail) });
             accepted++;
+            if (r.Metrics is { Count: > 0 } && check.Type == CheckType.Snmp) AddSamples(r);
 
             // Only the newest result per check drives state (replays of old history must not flap it).
             if (check.LastResultUtc is not null && r.Time < check.LastResultUtc) continue;
@@ -64,6 +69,7 @@ public sealed class ResultIngestService(NmsDbContext db, IHubContext<PortalHub, 
             check.ConsecutiveFailures = t.ConsecutiveFailures;
             check.LastResultUtc = r.Time;
             check.LastLatencyMs = r.LatencyMs;
+            if (r.Ok && r.Metrics is not null && check.Type == CheckType.Snmp) newestReadings[check.Id] = (r, check);
             if (t.Changed) { check.StateChangedUtc = r.Time; events.Add((check, t, r.Time)); }
         }
 
@@ -90,6 +96,8 @@ public sealed class ResultIngestService(NmsDbContext db, IHubContext<PortalHub, 
             }
         }
 
+        if (newestReadings.Count > 0) await EvaluateThresholdsAsync(newestReadings.Values, siteId, agentId, agentOffline, maintenance, ct);
+
         await db.SaveChangesAsync(ct);
 
         foreach (var (check, t, at) in events)
@@ -100,4 +108,78 @@ public sealed class ResultIngestService(NmsDbContext db, IHubContext<PortalHub, 
     }
 
     private static string? Truncate(string? s) => s is { Length: > 512 } ? s[..512] : s;
+
+    private void AddSamples(CheckResultDto r)
+    {
+        var keys = new HashSet<(string, string)>();
+        foreach (var m in r.Metrics!)
+        {
+            var instance = Truncate128(m.Instance ?? "");
+            if (m.Key.Length > 64 || !double.IsFinite(m.Value) || !keys.Add((m.Key, instance))) continue;
+            db.MetricSamples.Add(new MetricSample { Time = r.Time, CheckId = r.CheckId, Metric = m.Key, Instance = instance, Value = m.Value });
+        }
+    }
+
+    private static string Truncate128(string s) => s.Length > 128 ? s[..128] : s;
+
+    /// <summary>
+    /// Opens a Threshold incident for every (limit, row) newly breached and closes it once the reading is back inside the
+    /// limit. Rows missing from a poll leave their incident as it is. Suppression follows check-down incidents: recorded,
+    /// but not paged, while the agent is offline, during maintenance, or for non-critical devices.
+    /// </summary>
+    private async Task EvaluateThresholdsAsync(IEnumerable<(CheckResultDto result, Check check)> readings, Guid siteId, Guid agentId,
+        bool agentOffline, List<MaintenanceWindow> maintenance, CancellationToken ct)
+    {
+        var list = readings.ToList();
+        var ids = list.Select(x => x.check.Id).ToList();
+        var thresholds = await db.MetricThresholds.Where(t => ids.Contains(t.CheckId) && t.Enabled).ToListAsync(ct);
+        var open = await db.Incidents
+            .Where(i => i.Kind == IncidentKind.Threshold && i.ClosedUtc == null && i.CheckId != null && ids.Contains(i.CheckId.Value))
+            .ToListAsync(ct);
+        var openByKey = open.Where(i => i.ThresholdId != null).ToDictionary(i => (i.ThresholdId!.Value, i.MetricInstance ?? ""));
+
+        foreach (var (r, check) in list)
+        {
+            check.LastMetricsJson = JsonSerializer.Serialize(r.Metrics, NmsJson.Options);
+            var template = SnmpTemplates.Find(check.SnmpTemplate);
+            var inMaintenance = maintenance.Any(m => m.DeviceId == check.DeviceId || (m.DeviceId == null && m.SiteId == siteId));
+            foreach (var e in Evaluate(thresholds.Where(t => t.CheckId == check.Id), r.Metrics!))
+            {
+                var key = (e.Threshold.Id, e.Instance);
+                if (e.Breached && !openByKey.ContainsKey(key))
+                {
+                    var suppressed = agentOffline || inMaintenance || !check.Device.IsCritical;
+                    var inc = new Incident
+                    {
+                        Id = Guid.NewGuid(), Kind = IncidentKind.Threshold, SiteId = siteId, CheckId = check.Id, AgentId = agentId,
+                        ThresholdId = e.Threshold.Id, MetricInstance = e.Instance, OpenedUtc = r.Time,
+                        Summary = ThresholdSummary(check.Device, e.Threshold, template?.Metric(e.Threshold.MetricKey), e.Instance, e.Value),
+                        Notified = suppressed, RecoveryNotified = suppressed,
+                    };
+                    db.Incidents.Add(inc);
+                    openByKey[key] = inc;
+                }
+                else if (!e.Breached && openByKey.Remove(key, out var inc)) inc.ClosedUtc = r.Time;
+            }
+        }
+    }
+
+    internal readonly record struct ThresholdEval(MetricThreshold Threshold, string Instance, double Value, bool Breached);
+
+    /// <summary>Every (limit, reading) pair that applies: a limit with no instance covers every row of its metric.</summary>
+    internal static IEnumerable<ThresholdEval> Evaluate(IEnumerable<MetricThreshold> thresholds, IReadOnlyList<MetricSampleDto> samples)
+    {
+        foreach (var t in thresholds)
+            foreach (var s in samples)
+                if (s.Key == t.MetricKey && (t.Instance is null || t.Instance == (s.Instance ?? "")))
+                    yield return new ThresholdEval(t, s.Instance ?? "", s.Value, SnmpTemplates.Breached(t.Op, s.Value, t.Value));
+    }
+
+    /// <summary>"ups-1 (10.0.0.9): UPS on battery (Power source is battery)".</summary>
+    internal static string ThresholdSummary(Device device, MetricThreshold t, SnmpTemplateMetric? metric, string instance, double value)
+    {
+        var reading = metric?.Format(value) ?? value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        var name = (metric?.Name ?? t.MetricKey) + (instance.Length == 0 ? "" : $" [{instance}]");
+        return $"{device.Name} ({device.Address}): {t.Label} ({name} is {reading})";
+    }
 }

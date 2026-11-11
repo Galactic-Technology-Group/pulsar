@@ -1,0 +1,122 @@
+[
+  {
+    "key": "system",
+    "name": "SNMP system (uptime)",
+    "description": "Any SNMP device. Proves the agent answers and records uptime; a drop in uptime means a reboot.",
+    "metrics": [
+      { "key": "sysUpTime", "name": "Uptime", "oid": "1.3.6.1.2.1.1.3.0", "unit": "days", "scale": 1.1574074074074074e-7 }
+    ],
+    "thresholds": []
+  },
+  {
+    "key": "interfaces",
+    "name": "Interfaces (IF-MIB)",
+    "description": "Switches, routers, firewalls: per-port status, traffic and errors (64-bit counters where the device has them, 32-bit otherwise). Poll every 5 minutes; a 48-port switch is about 250 readings per poll.",
+    "metrics": [
+      { "key": "ifOperStatus", "name": "Status", "oid": "1.3.6.1.2.1.2.2.1.8", "table": true, "labelOid": "1.3.6.1.2.1.2.2.1.2",
+        "values": { "1": "up", "2": "down", "3": "testing", "5": "dormant", "6": "not present", "7": "lower layer down" } },
+      { "key": "ifInBps", "name": "In", "oid": "1.3.6.1.2.1.31.1.1.1.6", "fallbackOid": "1.3.6.1.2.1.2.2.1.10", "kind": "Counter", "unit": "bit/s", "scale": 8, "table": true, "labelOid": "1.3.6.1.2.1.2.2.1.2" },
+      { "key": "ifOutBps", "name": "Out", "oid": "1.3.6.1.2.1.31.1.1.1.10", "fallbackOid": "1.3.6.1.2.1.2.2.1.16", "kind": "Counter", "unit": "bit/s", "scale": 8, "table": true, "labelOid": "1.3.6.1.2.1.2.2.1.2" },
+      { "key": "ifInErrors", "name": "In errors", "oid": "1.3.6.1.2.1.2.2.1.14", "kind": "Counter", "unit": "/s", "table": true, "labelOid": "1.3.6.1.2.1.2.2.1.2" },
+      { "key": "ifOutErrors", "name": "Out errors", "oid": "1.3.6.1.2.1.2.2.1.20", "kind": "Counter", "unit": "/s", "table": true, "labelOid": "1.3.6.1.2.1.2.2.1.2" }
+    ],
+    "thresholds": []
+  },
+  {
+    "key": "host-cpu",
+    "name": "CPU load (HOST-RESOURCES-MIB)",
+    "description": "Servers, NAS units and many firewalls: load per processor over the last minute.",
+    "metrics": [
+      { "key": "hrProcessorLoad", "name": "CPU", "oid": "1.3.6.1.2.1.25.3.3.1.2", "unit": "%", "table": true }
+    ],
+    "thresholds": [
+      { "metric": "hrProcessorLoad", "op": "Above", "value": 90, "label": "CPU above 90%" }
+    ]
+  },
+  {
+    "key": "ups",
+    "name": "UPS (standard UPS-MIB, RFC 1628)",
+    "description": "Most UPS network cards, including CyberPower and Eaton. Battery, runtime, load and power source.",
+    "metrics": [
+      { "key": "upsOutputSource", "name": "Power source", "oid": "1.3.6.1.2.1.33.1.4.1.0",
+        "values": { "1": "other", "2": "none", "3": "mains", "4": "bypass", "5": "battery", "6": "booster", "7": "reducer" } },
+      { "key": "upsBatteryStatus", "name": "Battery status", "oid": "1.3.6.1.2.1.33.1.2.1.0",
+        "values": { "1": "unknown", "2": "normal", "3": "low", "4": "depleted" } },
+      { "key": "upsChargeRemaining", "name": "Battery charge", "oid": "1.3.6.1.2.1.33.1.2.4.0", "unit": "%" },
+      { "key": "upsMinutesRemaining", "name": "Runtime remaining", "oid": "1.3.6.1.2.1.33.1.2.3.0", "unit": "min" },
+      { "key": "upsSecondsOnBattery", "name": "Time on battery", "oid": "1.3.6.1.2.1.33.1.2.2.0", "unit": "s" },
+      { "key": "upsBatteryTemperature", "name": "Battery temperature", "oid": "1.3.6.1.2.1.33.1.2.7.0", "unit": "°C" },
+      { "key": "upsInputVoltage", "name": "Input voltage", "oid": "1.3.6.1.2.1.33.1.3.3.1.3", "unit": "V", "table": true },
+      { "key": "upsOutputLoad", "name": "Load", "oid": "1.3.6.1.2.1.33.1.4.4.1.5", "unit": "%", "table": true },
+      { "key": "upsAlarmsPresent", "name": "Active alarms", "oid": "1.3.6.1.2.1.33.1.6.1.0" }
+    ],
+    "thresholds": [
+      { "metric": "upsOutputSource", "op": "Equals", "value": 5, "label": "UPS on battery" },
+      { "metric": "upsBatteryStatus", "op": "Above", "value": 2, "label": "UPS battery low" },
+      { "metric": "upsChargeRemaining", "op": "Below", "value": 50, "label": "Battery charge below 50%" },
+      { "metric": "upsMinutesRemaining", "op": "Below", "value": 10, "label": "Runtime below 10 minutes" },
+      { "metric": "upsOutputLoad", "op": "Above", "value": 80, "label": "UPS load above 80%" },
+      { "metric": "upsBatteryTemperature", "op": "Above", "value": 40, "label": "Battery temperature above 40 °C" }
+    ]
+  },
+  {
+    "key": "apc-ups",
+    "name": "APC UPS (PowerNet-MIB)",
+    "description": "APC Smart-UPS with a Network Management Card. Adds the replace-battery flag the standard MIB lacks.",
+    "metrics": [
+      { "key": "apcOutputStatus", "name": "Output status", "oid": "1.3.6.1.4.1.318.1.1.1.4.1.1.0",
+        "values": { "1": "unknown", "2": "on line", "3": "on battery", "4": "smart boost", "5": "timed sleeping", "6": "software bypass", "7": "off", "8": "rebooting", "9": "switched bypass", "10": "hardware failure bypass", "11": "sleeping until power returns", "12": "smart trim", "13": "eco mode", "14": "hot standby", "15": "battery test" } },
+      { "key": "apcBatteryCapacity", "name": "Battery charge", "oid": "1.3.6.1.4.1.318.1.1.1.2.2.1.0", "unit": "%" },
+      { "key": "apcRuntimeRemaining", "name": "Runtime remaining", "oid": "1.3.6.1.4.1.318.1.1.1.2.2.3.0", "unit": "min", "scale": 1.6666666666666667e-4 },
+      { "key": "apcBatteryTemperature", "name": "Internal temperature", "oid": "1.3.6.1.4.1.318.1.1.1.2.2.2.0", "unit": "°C" },
+      { "key": "apcReplaceBattery", "name": "Replace battery", "oid": "1.3.6.1.4.1.318.1.1.1.2.2.4.0",
+        "values": { "1": "no", "2": "yes" } },
+      { "key": "apcOutputLoad", "name": "Load", "oid": "1.3.6.1.4.1.318.1.1.1.4.2.3.0", "unit": "%" },
+      { "key": "apcInputVoltage", "name": "Input voltage", "oid": "1.3.6.1.4.1.318.1.1.1.3.2.1.0", "unit": "V" }
+    ],
+    "thresholds": [
+      { "metric": "apcOutputStatus", "op": "Equals", "value": 3, "label": "UPS on battery" },
+      { "metric": "apcReplaceBattery", "op": "Equals", "value": 2, "label": "UPS battery needs replacing" },
+      { "metric": "apcBatteryCapacity", "op": "Below", "value": 50, "label": "Battery charge below 50%" },
+      { "metric": "apcRuntimeRemaining", "op": "Below", "value": 10, "label": "Runtime below 10 minutes" },
+      { "metric": "apcOutputLoad", "op": "Above", "value": 80, "label": "UPS load above 80%" },
+      { "metric": "apcBatteryTemperature", "op": "Above", "value": 40, "label": "UPS temperature above 40 °C" }
+    ]
+  },
+  {
+    "key": "cyberpower-ups",
+    "name": "CyberPower UPS (CPS-MIB)",
+    "description": "CyberPower RMCARD. Adds the replace-battery flag; the standard UPS template also works on these cards.",
+    "metrics": [
+      { "key": "cpsOutputStatus", "name": "Output status", "oid": "1.3.6.1.4.1.3808.1.1.1.4.1.1.0",
+        "values": { "1": "unknown", "2": "on line", "3": "on battery", "4": "boost", "5": "sleep", "6": "off", "7": "rebooting", "8": "eco", "9": "bypass", "10": "buck", "11": "overload" } },
+      { "key": "cpsBatteryCapacity", "name": "Battery charge", "oid": "1.3.6.1.4.1.3808.1.1.1.2.2.1.0", "unit": "%" },
+      { "key": "cpsRuntimeRemaining", "name": "Runtime remaining", "oid": "1.3.6.1.4.1.3808.1.1.1.2.2.4.0", "unit": "min", "scale": 1.6666666666666667e-4 },
+      { "key": "cpsBatteryTemperature", "name": "Battery temperature", "oid": "1.3.6.1.4.1.3808.1.1.1.2.2.3.0", "unit": "°C" },
+      { "key": "cpsReplaceBattery", "name": "Replace battery", "oid": "1.3.6.1.4.1.3808.1.1.1.2.2.5.0",
+        "values": { "1": "no", "2": "yes" } },
+      { "key": "cpsOutputLoad", "name": "Load", "oid": "1.3.6.1.4.1.3808.1.1.1.4.2.3.0", "unit": "%" },
+      { "key": "cpsInputVoltage", "name": "Input voltage", "oid": "1.3.6.1.4.1.3808.1.1.1.3.2.1.0", "unit": "V", "scale": 0.1 }
+    ],
+    "thresholds": [
+      { "metric": "cpsOutputStatus", "op": "Equals", "value": 3, "label": "UPS on battery" },
+      { "metric": "cpsReplaceBattery", "op": "Equals", "value": 2, "label": "UPS battery needs replacing" },
+      { "metric": "cpsBatteryCapacity", "op": "Below", "value": 50, "label": "Battery charge below 50%" },
+      { "metric": "cpsRuntimeRemaining", "op": "Below", "value": 10, "label": "Runtime below 10 minutes" },
+      { "metric": "cpsOutputLoad", "op": "Above", "value": 80, "label": "UPS load above 80%" }
+    ]
+  },
+  {
+    "key": "apc-environment",
+    "name": "APC temperature/humidity probes (PowerNet-MIB)",
+    "description": "Probes plugged into an APC Network Management Card (AP9335T, AP9335TH and similar), one row per probe. -1 means the probe lost contact.",
+    "metrics": [
+      { "key": "apcProbeTemperature", "name": "Temperature", "oid": "1.3.6.1.4.1.318.1.1.25.1.2.1.6", "unit": "°C", "table": true, "labelOid": "1.3.6.1.4.1.318.1.1.25.1.2.1.3" },
+      { "key": "apcProbeHumidity", "name": "Humidity", "oid": "1.3.6.1.4.1.318.1.1.25.1.2.1.7", "unit": "%RH", "table": true, "labelOid": "1.3.6.1.4.1.318.1.1.25.1.2.1.3" }
+    ],
+    "thresholds": [
+      { "metric": "apcProbeTemperature", "op": "Above", "value": 30, "label": "Room temperature above 30 °C" },
+      { "metric": "apcProbeHumidity", "op": "Above", "value": 60, "label": "Humidity above 60%" }
+    ]
+  }
+]

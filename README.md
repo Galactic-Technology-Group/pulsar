@@ -83,4 +83,6 @@ dotnet test Nms.sln
 
 ## Roadmap
 
+SNMP polling (UPS, temperature/humidity probes, interfaces, CPU) with per-reading limits is described in `docs/snmp.md`.
+
 `docs/roadmap.md` holds the full plan: the v1 go-live gate, then Phase 1 (SNMP and LLDP discovery, SNMP templates, brokered SSH/RDP/HTTP tunnels, PoE and PDU power control, geographic site map, read-only iOS app), Phase 2 (config backup, topology, security scans, reports, customer portal, iPad and Windows apps), Phase 3 (camera/VMS/access-control depth, Dynamics 365 Field Service work orders) and Phase 4 (MCP server, anomaly detection, OT/IoT). The remote-access design is sketched in `docs/architecture.md`.

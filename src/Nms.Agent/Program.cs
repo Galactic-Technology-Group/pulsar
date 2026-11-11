@@ -1,6 +1,7 @@
 using Nms.Agent;
 using Nms.Agent.Network;
 using Nms.Agent.Probes;
+using Nms.Agent.Probes.Snmp;
 using Nms.Agent.Scheduling;
 using Nms.Agent.Storage;
 using Nms.Agent.Transport;
@@ -37,6 +38,8 @@ builder.Services.AddSingleton<DiscoveryService>();
 builder.Services.AddSingleton<IProbe, IcmpProbe>();
 builder.Services.AddSingleton<IProbe, TcpProbe>();
 builder.Services.AddSingleton<IProbe, HttpProbe>();
+builder.Services.AddSingleton<CounterRates>();
+builder.Services.AddSingleton<IProbe, SnmpProbe>();
 builder.Services.AddSingleton<CheckScheduler>();
 
 builder.Services.AddSingleton<HubConnectionService>();

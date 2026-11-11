@@ -9,7 +9,15 @@ public sealed record AgentInput(string Name, int HeartbeatIntervalSec = 30);
 public sealed record AgentCreated(Guid AgentId, string EnrollmentToken, DateTimeOffset ExpiresUtc);
 public sealed record DeviceInput(string Name, string Address, int? VlanId, bool IsCritical = true, string[]? Tags = null, string? Notes = null, string? MacAddress = null);
 public sealed record CheckInput(CheckType Type, int? Port = null, string? HttpPath = null, int? ExpectedHttpStatus = null, string? BodyRegex = null,
-    int IntervalSec = 60, int TimeoutMs = 2000, int FailureThreshold = 3, bool Enabled = true);
+    int IntervalSec = 60, int TimeoutMs = 2000, int FailureThreshold = 3, bool Enabled = true, string? SnmpTemplate = null, Guid? SnmpCredentialId = null);
+/// <summary>Secrets are write-only: blank on update keeps the stored value. SiteId null makes the credential usable at every site.</summary>
+public sealed record SnmpCredentialInput(string Name, SnmpVersion Version, Guid? SiteId = null, string? Community = null, string? User = null,
+    SnmpAuth Auth = SnmpAuth.None, string? AuthPassword = null, SnmpPriv Priv = SnmpPriv.None, string? PrivPassword = null, string? Context = null);
+/// <summary>What the API returns for a credential: never the community or passwords.</summary>
+public sealed record SnmpCredentialView(Guid Id, string Name, SnmpVersion Version, Guid? SiteId, string? User, SnmpAuth Auth, SnmpPriv Priv, string? Context, bool HasSecret, int Checks);
+/// <summary>Instance null applies the limit to every row of a table metric (every interface, every sensor).</summary>
+public sealed record ThresholdInput(string MetricKey, ThresholdOp Op, double Value, string Label, string? Instance = null, bool Enabled = true);
+public sealed record MetricPoint(DateTimeOffset Time, double Value, double? Min = null, double? Max = null);
 public sealed record ChannelInput(string Name, NotificationChannelType Type, string ConfigJson, bool Enabled = true);
 public sealed record RuleInput(string Name, AlertScope Scope, Guid ChannelId, Guid? SiteId = null, Guid? DeviceId = null, string? Tag = null, bool CriticalOnly = true, int CooldownSec = 300, bool Enabled = true);
 public sealed record MaintenanceInput(Guid? SiteId, Guid? DeviceId, DateTimeOffset StartUtc, DateTimeOffset EndUtc, string Reason);

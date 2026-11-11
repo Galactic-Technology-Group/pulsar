@@ -108,6 +108,74 @@ public class ResultIngestTests
         Assert.True(inc.RecoveryNotified);
     }
 
+    private static async Task<(NmsDbContext db, Guid siteId, Guid agentId, Check check)> SeedUps()
+    {
+        var (db, siteId, agentId, check) = await Seed();
+        check.Type = CheckType.Snmp; check.SnmpTemplate = "ups"; check.FailureThreshold = 1;
+        db.MetricThresholds.Add(new MetricThreshold { Id = Guid.NewGuid(), CheckId = check.Id, MetricKey = "upsOutputSource", Op = ThresholdOp.Equals, Value = 5, Label = "UPS on battery" });
+        db.MetricThresholds.Add(new MetricThreshold { Id = Guid.NewGuid(), CheckId = check.Id, MetricKey = "upsOutputLoad", Op = ThresholdOp.Above, Value = 80, Label = "UPS load above 80%" });
+        await db.SaveChangesAsync();
+        return (db, siteId, agentId, check);
+    }
+
+    private static CheckResultDto Snmp(Guid checkId, DateTimeOffset t, double source, params (string phase, double load)[] loads) =>
+        new(checkId, t, true, 3, null, [new("upsOutputSource", null, source), .. loads.Select(l => new MetricSampleDto("upsOutputLoad", l.phase, l.load))]);
+
+    [Fact]
+    public async Task Snmp_readings_are_stored_and_a_crossed_limit_opens_then_clears_an_incident()
+    {
+        var (db, siteId, agentId, check) = await SeedUps();
+        var svc = Svc(db);
+        var t = DateTimeOffset.UtcNow.AddMinutes(-10);
+
+        await svc.IngestAsync(agentId, siteId, [Snmp(check.Id, t, 3, ("1", 40))], default);
+        Assert.Equal(2, await db.MetricSamples.CountAsync());
+        Assert.Empty(db.Incidents);
+        Assert.Contains("upsOutputSource", (await db.Checks.SingleAsync()).LastMetricsJson);
+
+        await svc.IngestAsync(agentId, siteId, [Snmp(check.Id, t.AddMinutes(1), 5, ("1", 40))], default);
+        var inc = await db.Incidents.SingleAsync();
+        Assert.Equal(IncidentKind.Threshold, inc.Kind);
+        Assert.Equal("core-sw (10.0.0.1): UPS on battery (Power source is battery)", inc.Summary);
+        Assert.False(inc.Notified);
+
+        // Still on battery: no second incident. Back on mains: closed.
+        await svc.IngestAsync(agentId, siteId, [Snmp(check.Id, t.AddMinutes(2), 5, ("1", 40))], default);
+        Assert.Single(db.Incidents);
+        await svc.IngestAsync(agentId, siteId, [Snmp(check.Id, t.AddMinutes(3), 3, ("1", 40))], default);
+        Assert.NotNull((await db.Incidents.SingleAsync()).ClosedUtc);
+    }
+
+    [Fact]
+    public async Task A_limit_on_a_table_reading_is_judged_per_row()
+    {
+        var (db, siteId, agentId, check) = await SeedUps();
+        var svc = Svc(db);
+        var t = DateTimeOffset.UtcNow.AddMinutes(-10);
+
+        await svc.IngestAsync(agentId, siteId, [Snmp(check.Id, t, 3, ("1", 85), ("2", 90), ("3", 20))], default);
+        var open = await db.Incidents.OrderBy(i => i.MetricInstance).ToListAsync();
+        Assert.Equal(["1", "2"], open.Select(i => i.MetricInstance));
+        Assert.Contains("Load [2] is 90 %", open[1].Summary);
+
+        await svc.IngestAsync(agentId, siteId, [Snmp(check.Id, t.AddMinutes(1), 3, ("1", 50), ("2", 90), ("3", 20))], default);
+        Assert.Equal(["2"], (await db.Incidents.Where(i => i.ClosedUtc == null).ToListAsync()).Select(i => i.MetricInstance));
+    }
+
+    [Fact]
+    public async Task A_failed_poll_leaves_limits_alone_and_drives_the_check_down()
+    {
+        var (db, siteId, agentId, check) = await SeedUps();
+        var svc = Svc(db);
+        var t = DateTimeOffset.UtcNow.AddMinutes(-10);
+        await svc.IngestAsync(agentId, siteId, [Snmp(check.Id, t, 5)], default);
+        await svc.IngestAsync(agentId, siteId, [new CheckResultDto(check.Id, t.AddMinutes(1), false, null, "TimedOut")], default);
+
+        var incidents = await db.Incidents.ToListAsync();
+        Assert.Contains(incidents, i => i.Kind == IncidentKind.Threshold && i.ClosedUtc == null);   // not cleared by silence
+        Assert.Contains(incidents, i => i.Kind == IncidentKind.CheckDown);
+    }
+
     private static CheckResultDto R(Guid checkId, DateTimeOffset t, bool ok) => new(checkId, t, ok, ok ? 5 : null, ok ? null : "TimedOut");
 
     /// <summary>IHubContext stand-in that swallows every broadcast.</summary>

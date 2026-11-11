@@ -20,7 +20,9 @@ public sealed class RetentionJob(IServiceScopeFactory scopes, IOptions<WorkerOpt
                 var windows = await db.MaintenanceWindows.Where(m => m.EndUtc < DateTimeOffset.UtcNow.AddDays(-30)).ExecuteDeleteAsync(ct);
                 // Without Timescale (local dev) the raw table would grow forever.
                 var results = await db.CheckResults.Where(r => r.Time < DateTimeOffset.UtcNow.AddDays(-options.Value.RetentionDays)).ExecuteDeleteAsync(ct);
-                log.LogInformation("Retention: removed {Incidents} incidents, {Windows} maintenance windows, {Results} raw results", incidents, windows, results);
+                var samples = await db.MetricSamples.Where(r => r.Time < DateTimeOffset.UtcNow.AddDays(-options.Value.RetentionDays)).ExecuteDeleteAsync(ct);
+                log.LogInformation("Retention: removed {Incidents} incidents, {Windows} maintenance windows, {Results} raw results, {Samples} SNMP readings",
+                    incidents, windows, results, samples);
             }
             catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "Retention pass failed"); }
             await Task.Delay(TimeSpan.FromHours(24), ct);

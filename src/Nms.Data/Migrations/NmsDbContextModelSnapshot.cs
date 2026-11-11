@@ -425,6 +425,10 @@ namespace Nms.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("last_latency_ms");
 
+                    b.Property<string>("LastMetricsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("last_metrics_json");
+
                     b.Property<DateTimeOffset?>("LastResultUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_result_utc");
@@ -432,6 +436,15 @@ namespace Nms.Data.Migrations
                     b.Property<int?>("Port")
                         .HasColumnType("integer")
                         .HasColumnName("port");
+
+                    b.Property<Guid?>("SnmpCredentialId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("snmp_credential_id");
+
+                    b.Property<string>("SnmpTemplate")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("snmp_template");
 
                     b.Property<int>("State")
                         .HasColumnType("integer")
@@ -452,6 +465,8 @@ namespace Nms.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("DeviceId");
+
+                    b.HasIndex("SnmpCredentialId");
 
                     b.HasIndex("State");
 
@@ -591,6 +606,11 @@ namespace Nms.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("kind");
 
+                    b.Property<string>("MetricInstance")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("metric_instance");
+
                     b.Property<bool>("Notified")
                         .HasColumnType("boolean")
                         .HasColumnName("notified");
@@ -612,6 +632,10 @@ namespace Nms.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("summary");
 
+                    b.Property<Guid?>("ThresholdId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("threshold_id");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AgentId", "ClosedUtc");
@@ -619,6 +643,8 @@ namespace Nms.Data.Migrations
                     b.HasIndex("CheckId", "ClosedUtc");
 
                     b.HasIndex("SiteId", "ClosedUtc");
+
+                    b.HasIndex("ThresholdId", "ClosedUtc");
 
                     b.ToTable("incidents", "nms");
                 });
@@ -656,6 +682,85 @@ namespace Nms.Data.Migrations
                     b.HasIndex("StartUtc", "EndUtc");
 
                     b.ToTable("maintenance_windows", "nms");
+                });
+
+            modelBuilder.Entity("Nms.Data.Entities.MetricSample", b =>
+                {
+                    b.Property<DateTimeOffset>("Time")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("time");
+
+                    b.Property<Guid>("CheckId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("check_id");
+
+                    b.Property<string>("Metric")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("metric");
+
+                    b.Property<string>("Instance")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("instance");
+
+                    b.Property<double>("Value")
+                        .HasColumnType("double precision")
+                        .HasColumnName("value");
+
+                    b.HasKey("Time", "CheckId", "Metric", "Instance");
+
+                    b.HasIndex("CheckId", "Metric", "Time")
+                        .IsDescending(false, false, true);
+
+                    b.ToTable("metric_samples", "nms");
+                });
+
+            modelBuilder.Entity("Nms.Data.Entities.MetricThreshold", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CheckId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("check_id");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<string>("Instance")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("instance");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("label");
+
+                    b.Property<string>("MetricKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("metric_key");
+
+                    b.Property<int>("Op")
+                        .HasColumnType("integer")
+                        .HasColumnName("op");
+
+                    b.Property<double>("Value")
+                        .HasColumnType("double precision")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CheckId");
+
+                    b.ToTable("metric_thresholds", "nms");
                 });
 
             modelBuilder.Entity("Nms.Data.Entities.NotificationChannel", b =>
@@ -733,6 +838,63 @@ namespace Nms.Data.Migrations
                     b.ToTable("sites", "nms");
                 });
 
+            modelBuilder.Entity("Nms.Data.Entities.SnmpCredential", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Auth")
+                        .HasColumnType("integer")
+                        .HasColumnName("auth");
+
+                    b.Property<string>("AuthPassword")
+                        .HasColumnType("text")
+                        .HasColumnName("auth_password");
+
+                    b.Property<string>("Community")
+                        .HasColumnType("text")
+                        .HasColumnName("community");
+
+                    b.Property<string>("Context")
+                        .HasColumnType("text")
+                        .HasColumnName("context");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("Priv")
+                        .HasColumnType("integer")
+                        .HasColumnName("priv");
+
+                    b.Property<string>("PrivPassword")
+                        .HasColumnType("text")
+                        .HasColumnName("priv_password");
+
+                    b.Property<Guid?>("SiteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("site_id");
+
+                    b.Property<string>("User")
+                        .HasColumnType("text")
+                        .HasColumnName("user");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SiteId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("snmp_credentials", "nms");
+                });
+
             modelBuilder.Entity("Nms.Data.Entities.Agent", b =>
                 {
                     b.HasOne("Nms.Data.Entities.Site", "Site")
@@ -774,7 +936,14 @@ namespace Nms.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Nms.Data.Entities.SnmpCredential", "SnmpCredential")
+                        .WithMany()
+                        .HasForeignKey("SnmpCredentialId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Device");
+
+                    b.Navigation("SnmpCredential");
                 });
 
             modelBuilder.Entity("Nms.Data.Entities.Device", b =>
@@ -788,9 +957,25 @@ namespace Nms.Data.Migrations
                     b.Navigation("Site");
                 });
 
+            modelBuilder.Entity("Nms.Data.Entities.MetricThreshold", b =>
+                {
+                    b.HasOne("Nms.Data.Entities.Check", "Check")
+                        .WithMany("Thresholds")
+                        .HasForeignKey("CheckId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Check");
+                });
+
             modelBuilder.Entity("Nms.Data.Entities.Agent", b =>
                 {
                     b.Navigation("Interfaces");
+                });
+
+            modelBuilder.Entity("Nms.Data.Entities.Check", b =>
+                {
+                    b.Navigation("Thresholds");
                 });
 
             modelBuilder.Entity("Nms.Data.Entities.Device", b =>

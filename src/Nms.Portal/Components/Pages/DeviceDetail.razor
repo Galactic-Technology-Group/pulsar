@@ -19,7 +19,7 @@ else
             {
                 <tr class="@(selected?.Id == c.Id ? "selected" : "")" @onclick="() => Select(c)">
                     <td>@c.Type</td>
-                    <td>@(c.Type switch { CheckType.Icmp => "-", CheckType.GatewayPing => $"{device.Address} from Azure{(c.Port is null ? "" : $" tcp/{c.Port}")}", _ => $"{c.Port}{c.HttpPath}" })</td>
+                    <td>@(c.Type switch { CheckType.Icmp => "-", CheckType.GatewayPing => $"{device.Address} from Azure{(c.Port is null ? "" : $" tcp/{c.Port}")}", CheckType.Snmp => SnmpTemplates.Find(c.SnmpTemplate)?.Name ?? c.SnmpTemplate, _ => $"{c.Port}{c.HttpPath}" })</td>
                     <td><StateBadge State="c.State" /></td>
                     <td>@(c.LastLatencyMs is null ? "-" : c.LastLatencyMs + " ms")</td>
                     <td>@c.IntervalSec s</td>
@@ -39,12 +39,19 @@ else
 
         <AuthorizeView Roles="Nms.Admin,Nms.Operator">
             <div class="form-row">
-                <select @bind="form.Type">
+                <select @bind="form.Type" @bind:after="TypeChanged">
                     <option value="@CheckType.Icmp">ICMP ping</option>
                     <option value="@CheckType.TcpPort">TCP port</option>
                     <option value="@CheckType.Http">HTTP(S)</option>
+                    <option value="@CheckType.Snmp">SNMP</option>
                 </select>
-                @if (form.Type != CheckType.Icmp) { <input type="number" placeholder="port" @bind="form.Port" style="width:6em" /> }
+                @if (form.Type == CheckType.Snmp)
+                {
+                    <select @bind="form.SnmpTemplate"><option value="">— template —</option>@foreach (var t in SnmpTemplates.All) { <option value="@t.Key" title="@t.Description">@t.Name</option> }</select>
+                    <select @bind="form.SnmpCredentialId"><option value="">— credential —</option>@foreach (var c in creds) { <option value="@c.Id">@c.Name (@(c.Version == SnmpVersion.V2c ? "v2c" : "v3"))</option> }</select>
+                    @if (creds.Count == 0) { <span class="small muted">An admin adds SNMP credentials under Settings.</span> }
+                }
+                @if (form.Type != CheckType.Icmp) { <input type="number" placeholder="@(form.Type == CheckType.Snmp ? "161" : "port")" @bind="form.Port" style="width:6em" /> }
                 @if (form.Type == CheckType.Http)
                 {
                     <input placeholder="/path" @bind="form.HttpPath" />
@@ -53,12 +60,98 @@ else
                 }
                 <label>every <input type="number" @bind="form.IntervalSec" style="width:5em" /> s</label>
                 <label>timeout <input type="number" @bind="form.TimeoutMs" style="width:6em" /> ms</label>
-                <label>down after <input type="number" @bind="form.FailureThreshold" style="width:4em" /> failures</label>
+                <label>down after <input type="number" @bind="form.FailureThreshold" style="width:4em" /> @(form.Type == CheckType.Snmp ? "unanswered polls" : "failures")</label>
                 <button class="primary" @onclick="AddCheck">Add check</button>
             </div>
             @if (error is not null) { <p class="error">@error</p> }
         </AuthorizeView>
     </section>
+
+    @if (selected is { Type: CheckType.Snmp } && SnmpTemplates.Find(selected.SnmpTemplate) is { } tpl)
+    {
+        var readings = Readings(selected);
+        <section class="card">
+            <h3>@tpl.Name readings <small class="muted">@(selected.LastResultUtc is null ? "" : "as of " + selected.LastResultUtc.Value.ToLocalTime().ToString("g"))</small></h3>
+            @if (readings.Count == 0) { <p class="muted">No readings yet. The first poll after the agent picks up the check fills this in; traffic rates need two polls.</p> }
+            else
+            {
+                var scalarMetrics = tpl.Metrics.Where(m => !m.Table && readings.Any(r => r.Key == m.Key)).ToList();
+                var tableMetrics = tpl.Metrics.Where(m => m.Table && readings.Any(r => r.Key == m.Key)).ToList();
+                @if (scalarMetrics.Count > 0)
+                {
+                    <table class="grid">
+                        <tbody>
+                        @foreach (var m in scalarMetrics)
+                        {
+                            var v = readings.First(r => r.Key == m.Key).Value;
+                            <tr class="@(Breached(m.Key, "", v) ? "breached" : "") clickable" @onclick="() => Chart(m, null)"><td>@m.Name</td><td>@m.Format(v)</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+                @if (tableMetrics.Count > 0)
+                {
+                    <table class="grid small">
+                        <thead><tr><th></th>@foreach (var m in tableMetrics) { <th>@m.Name</th> }</tr></thead>
+                        <tbody>
+                        @foreach (var inst in readings.Where(r => r.Instance is not null).Select(r => r.Instance!).Distinct())
+                        {
+                            <tr><td>@inst</td>
+                            @foreach (var m in tableMetrics)
+                            {
+                                var r = readings.FirstOrDefault(x => x.Key == m.Key && x.Instance == inst);
+                                <td class="@(r is not null && Breached(m.Key, inst, r.Value) ? "breached" : "") clickable" @onclick="() => Chart(m, inst)">@(r is null ? "" : m.Format(r.Value))</td>
+                            }
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+                <p class="small muted">Click a reading for its history.</p>
+            }
+
+            @if (chartMetric is not null)
+            {
+                <h4>@chartMetric.Name @(chartInstance is null ? "" : $"[{chartInstance}]")
+                    <span class="range">
+                        <button class="small @(metricHours == 6 ? "active" : "")" @onclick="() => SetMetricRange(6)">6 h</button>
+                        <button class="small @(metricHours == 24 ? "active" : "")" @onclick="() => SetMetricRange(24)">24 h</button>
+                        <button class="small @(metricHours == 168 ? "active" : "")" @onclick="() => SetMetricRange(168)">7 d</button>
+                    </span>
+                </h4>
+                <MetricChart Points="metricPoints" Format="chartMetric.Format" Label="@chartMetric.Name"
+                             Limit="@thresholds.Where(t => t.Enabled && t.MetricKey == chartMetric.Key && (t.Instance is null || t.Instance == chartInstance) && t.Op is ThresholdOp.Above or ThresholdOp.Below).Select(t => (double?)t.Value).FirstOrDefault()" />
+            }
+
+            <h4>Limits</h4>
+            <table class="grid small">
+                <thead><tr><th>Alert</th><th>Reading</th><th>Rows</th><th>Condition</th><th>Enabled</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var t in thresholds)
+                {
+                    var m = tpl.Metric(t.MetricKey);
+                    <tr><td>@t.Label</td><td>@(m?.Name ?? t.MetricKey)</td><td>@(t.Instance ?? (m?.Table == true ? "all" : ""))</td>
+                        <td>@SnmpTemplates.Describe(t.Op) @(m?.Format(t.Value) ?? t.Value.ToString())</td><td>@(t.Enabled ? "yes" : "no")</td>
+                        <td class="actions"><AuthorizeView Roles="Nms.Admin,Nms.Operator" Context="auth">
+                            <button class="small" @onclick="() => ToggleThreshold(t)">@(t.Enabled ? "Disable" : "Enable")</button>
+                            <button class="danger small" @onclick="() => DeleteThreshold(t.Id)">Delete</button>
+                        </AuthorizeView></td></tr>
+                }
+                </tbody>
+            </table>
+            <AuthorizeView Roles="Nms.Admin,Nms.Operator" Context="auth">
+                <div class="form-row">
+                    <select @bind="th.MetricKey"><option value="">— reading —</option>@foreach (var m in tpl.Metrics) { <option value="@m.Key">@m.Name</option> }</select>
+                    @if (tpl.Metric(th.MetricKey ?? "")?.Table == true) { <input placeholder="row (blank = all)" @bind="th.Instance" style="width:10em" /> }
+                    <select @bind="th.Op">@foreach (var o in Enum.GetValues<ThresholdOp>()) { <option value="@o">@SnmpTemplates.Describe(o)</option> }</select>
+                    <input type="number" step="any" @bind="th.Value" style="width:7em" />
+                    @if (tpl.Metric(th.MetricKey ?? "")?.Values is { } names) { <span class="small muted">@string.Join(", ", names.Select(n => $"{n.Key} = {n.Value}"))</span> }
+                    <input placeholder="alert text, e.g. Server room above 28 °C" @bind="th.Label" style="min-width:18em" />
+                    <button class="primary" @onclick="AddThreshold" disabled="@(string.IsNullOrEmpty(th.MetricKey) || string.IsNullOrWhiteSpace(th.Label))">Add limit</button>
+                </div>
+            </AuthorizeView>
+        </section>
+    }
 
     @if (selected is not null)
     {
@@ -94,11 +187,20 @@ else
     private int hours = 24;
     private CheckForm form = new();
     private string? error;
+    private List<SnmpCredentialView> creds = new();
+    private List<MetricThreshold> thresholds = new();
+    private SnmpTemplateMetric? chartMetric;
+    private string? chartInstance;
+    private List<MetricPoint> metricPoints = new();
+    private int metricHours = 24;
+    private ThresholdForm th = new();
 
     protected override async Task OnInitializedAsync()
     {
         await Load();
         if (device?.Checks.FirstOrDefault() is { } first) await Select(first);
+        // Viewers may not list credentials; they cannot add checks anyway.
+        try { if (device is not null) creds = await Api.GetSnmpCredentialsAsync(device.SiteId); } catch (Exception) { creds = new(); }
         await Live.EnsureConnectedAsync(device?.SiteId);
         Live.Changed += OnChanged;
     }
@@ -112,13 +214,59 @@ else
     }
     public void Dispose() => Live.Changed -= OnChanged;
 
-    private async Task Select(Check c) { selected = c; await LoadHistory(); }
+    private async Task Select(Check c)
+    {
+        if (selected?.Id != c.Id) { chartMetric = null; chartInstance = null; metricPoints = new(); }
+        selected = c;
+        await LoadHistory();
+    }
     private async Task SetRange(int h) { hours = h; await LoadHistory(); }
     private async Task LoadHistory()
     {
         if (selected is null) return;
         history = await Api.GetHistoryAsync(selected.Id, DateTimeOffset.UtcNow.AddHours(-hours), DateTimeOffset.UtcNow);
         recent = await Api.GetRecentResultsAsync(selected.Id, 30);
+        thresholds = selected.Type == CheckType.Snmp ? await Api.GetThresholdsAsync(selected.Id) : new();
+        if (selected.Type == CheckType.Snmp && device?.Checks.FirstOrDefault(x => x.Id == selected.Id) is { } fresh) selected = fresh;
+        if (chartMetric is not null) await LoadMetric();
+    }
+
+    private static List<MetricSampleDto> Readings(Check c)
+    {
+        if (string.IsNullOrEmpty(c.LastMetricsJson)) return new();
+        try { return System.Text.Json.JsonSerializer.Deserialize<List<MetricSampleDto>>(c.LastMetricsJson, NmsJson.Options) ?? new(); }
+        catch (System.Text.Json.JsonException) { return new(); }
+    }
+    private bool Breached(string key, string instance, double value) =>
+        thresholds.Any(t => t.Enabled && t.MetricKey == key && (t.Instance is null || t.Instance == instance) && SnmpTemplates.Breached(t.Op, value, t.Value));
+    private async Task Chart(SnmpTemplateMetric m, string? instance) { chartMetric = m; chartInstance = instance; await LoadMetric(); }
+    private async Task SetMetricRange(int h) { metricHours = h; await LoadMetric(); }
+    private async Task LoadMetric()
+    {
+        if (selected is null || chartMetric is null) return;
+        metricPoints = await Api.GetMetricHistoryAsync(selected.Id, chartMetric.Key, chartInstance, DateTimeOffset.UtcNow.AddHours(-metricHours), DateTimeOffset.UtcNow);
+    }
+    private async Task AddThreshold()
+    {
+        error = null;
+        try
+        {
+            await Api.CreateThresholdAsync(selected!.Id, new ThresholdInput(th.MetricKey!, th.Op, th.Value, th.Label, th.Instance));
+            th = new(); await LoadHistory();
+        }
+        catch (ApiException ex) { error = ex.Message; }
+    }
+    private async Task ToggleThreshold(MetricThreshold t)
+    {
+        await Api.UpdateThresholdAsync(t.Id, new ThresholdInput(t.MetricKey, t.Op, t.Value, t.Label, t.Instance, !t.Enabled));
+        await LoadHistory();
+    }
+    private async Task DeleteThreshold(Guid id) { await Api.DeleteThresholdAsync(id); await LoadHistory(); }
+    private void TypeChanged()
+    {
+        // SNMP polls cost more (a switch is hundreds of readings); five minutes is the default.
+        if (form.Type == CheckType.Snmp && form.IntervalSec == 60) form.IntervalSec = 300;
+        else if (form.Type != CheckType.Snmp && form.IntervalSec == 300) form.IntervalSec = 60;
     }
 
     private async Task AddCheck()
@@ -126,14 +274,15 @@ else
         error = null;
         try
         {
-            await Api.CreateCheckAsync(DeviceId, new CheckInput(form.Type, form.Port, form.HttpPath, form.ExpectedHttpStatus, form.BodyRegex, form.IntervalSec, form.TimeoutMs, form.FailureThreshold));
+            await Api.CreateCheckAsync(DeviceId, new CheckInput(form.Type, form.Port, form.HttpPath, form.ExpectedHttpStatus, form.BodyRegex, form.IntervalSec, form.TimeoutMs, form.FailureThreshold,
+                SnmpTemplate: string.IsNullOrEmpty(form.SnmpTemplate) ? null : form.SnmpTemplate, SnmpCredentialId: form.SnmpCredentialId));
             form = new(); await Load();
         }
         catch (ApiException ex) { error = ex.Message; }
     }
     private async Task Toggle(Check c)
     {
-        await Api.UpdateCheckAsync(c.Id, new CheckInput(c.Type, c.Port, c.HttpPath, c.ExpectedHttpStatus, c.BodyRegex, c.IntervalSec, c.TimeoutMs, c.FailureThreshold, !c.Enabled));
+        await Api.UpdateCheckAsync(c.Id, new CheckInput(c.Type, c.Port, c.HttpPath, c.ExpectedHttpStatus, c.BodyRegex, c.IntervalSec, c.TimeoutMs, c.FailureThreshold, !c.Enabled, c.SnmpTemplate, c.SnmpCredentialId));
         await Load();
     }
     private async Task DeleteCheck(Guid id) { await Api.DeleteCheckAsync(id); if (selected?.Id == id) selected = null; await Load(); }
@@ -142,5 +291,10 @@ else
     {
         public CheckType Type { get; set; } = CheckType.TcpPort; public int? Port { get; set; } public string? HttpPath { get; set; } public int? ExpectedHttpStatus { get; set; }
         public string? BodyRegex { get; set; } public int IntervalSec { get; set; } = 60; public int TimeoutMs { get; set; } = 2000; public int FailureThreshold { get; set; } = 3;
+        public string? SnmpTemplate { get; set; } public Guid? SnmpCredentialId { get; set; }
+    }
+    private sealed class ThresholdForm
+    {
+        public string? MetricKey { get; set; } public string? Instance { get; set; } public ThresholdOp Op { get; set; } = ThresholdOp.Above; public double Value { get; set; } public string Label { get; set; } = "";
     }
 }

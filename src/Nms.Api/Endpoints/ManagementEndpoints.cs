@@ -170,20 +170,36 @@ public static class ManagementEndpoints
         write.MapPost("/devices/{deviceId:guid}/checks", async (Guid deviceId, CheckInput input, NmsDbContext db, AgentConfigBuilder cfg) =>
         {
             var d = await db.Devices.FindAsync(deviceId); if (d is null) return Results.NotFound();
+            if (await SnmpEndpoints.CheckError(db, d, input) is { } snmpError) return Results.BadRequest(new { error = snmpError });
             var c = new Check { Id = Guid.NewGuid(), DeviceId = deviceId };
             Apply(c, input);
-            db.Checks.Add(c); await db.SaveChangesAsync(); await cfg.NotifySiteChangedAsync(d.SiteId);
+            db.Checks.Add(c);
+            db.MetricThresholds.AddRange(SnmpEndpoints.Defaults(c));
+            await db.SaveChangesAsync(); await cfg.NotifySiteChangedAsync(d.SiteId);
             return Results.Created($"/api/checks/{c.Id}", c);
         });
         write.MapPut("/checks/{id:guid}", async (Guid id, CheckInput input, NmsDbContext db, AgentConfigBuilder cfg) =>
         {
             var c = await db.Checks.Include(x => x.Device).FirstOrDefaultAsync(x => x.Id == id); if (c is null) return Results.NotFound();
-            Apply(c, input); await db.SaveChangesAsync(); await cfg.NotifySiteChangedAsync(c.Device.SiteId);
+            if (await SnmpEndpoints.CheckError(db, c.Device, input) is { } snmpError) return Results.BadRequest(new { error = snmpError });
+            var templateChanged = c.SnmpTemplate != (input.Type == CheckType.Snmp ? input.SnmpTemplate : null);
+            Apply(c, input);
+            if (templateChanged)
+            {
+                // Limits name the old template's readings; start over from the new template's defaults.
+                db.MetricThresholds.RemoveRange(await db.MetricThresholds.Where(t => t.CheckId == id).ToListAsync());
+                db.MetricThresholds.AddRange(SnmpEndpoints.Defaults(c));
+                await SnmpEndpoints.CloseQuietlyAsync(db, i => i.CheckId == id && i.Kind == IncidentKind.Threshold);
+                c.LastMetricsJson = null;
+            }
+            await db.SaveChangesAsync(); await cfg.NotifySiteChangedAsync(c.Device.SiteId);
             return Results.Ok(c);
         });
         write.MapDelete("/checks/{id:guid}", async (Guid id, NmsDbContext db, AgentConfigBuilder cfg) =>
         {
             var c = await db.Checks.Include(x => x.Device).FirstOrDefaultAsync(x => x.Id == id); if (c is null) return Results.NotFound();
+            // Nothing will ever close these once the check is gone.
+            await SnmpEndpoints.CloseQuietlyAsync(db, i => i.CheckId == id);
             db.Checks.Remove(c); await db.SaveChangesAsync(); await cfg.NotifySiteChangedAsync(c.Device.SiteId);
             return Results.NoContent();
         });
@@ -304,6 +320,8 @@ public static class ManagementEndpoints
         });
         admin.MapGet("/releases/source", (GitHubReleaseSource github) => Results.Ok(new { github.Repo }));
 
+        SnmpEndpoints.Map(api, write, admin);
+
         return app;
     }
 
@@ -335,6 +353,9 @@ public static class ManagementEndpoints
     private static void Apply(Check c, CheckInput i)
     {
         c.Type = i.Type; c.Port = i.Port; c.HttpPath = i.HttpPath; c.ExpectedHttpStatus = i.ExpectedHttpStatus; c.BodyRegex = i.BodyRegex;
+        var snmp = i.Type == CheckType.Snmp;
+        c.SnmpTemplate = snmp ? i.SnmpTemplate : null; c.SnmpCredentialId = snmp ? i.SnmpCredentialId : null;
+        if (snmp && c.Port is null or <= 0) c.Port = 161;
         c.IntervalSec = Math.Clamp(i.IntervalSec, 5, 3600); c.TimeoutMs = Math.Clamp(i.TimeoutMs, 200, 30000);
         c.FailureThreshold = Math.Clamp(i.FailureThreshold, 1, 20); c.Enabled = i.Enabled;
     }

@@ -4,7 +4,8 @@ using Nms.Shared.Contracts;
 
 namespace Nms.Agent.Probes;
 
-public sealed record ProbeOutcome(bool Ok, int? LatencyMs, string? Detail)
+/// <summary>Metrics carries SNMP readings; other probes leave it null.</summary>
+public sealed record ProbeOutcome(bool Ok, int? LatencyMs, string? Detail, IReadOnlyList<MetricSampleDto>? Metrics = null)
 {
     public static ProbeOutcome Fail(string detail) => new(false, null, detail);
     public static ProbeOutcome Pass(int latencyMs, string? detail = null) => new(true, latencyMs, detail);

@@ -108,17 +108,17 @@ with the gateway verdict, its recovery, and no device flood.
 | Item | State |
 |---|---|
 | ICMP RTT/loss, TCP service checks, HTTP/HTTPS checks | **done** |
-| SNMP templates: CPU, memory, temperature, fan, PSU, PoE budget, interface traffic/errors/discards | **new**: adds a `Snmp` check type and a template entity; agent gets an SNMP poller |
+| SNMP templates: CPU, memory, temperature, fan, PSU, PoE budget, interface traffic/errors/discards | **partial** (agent 0.1.8, `docs/snmp.md`): SNMPv2c/v3 poller in the agent, `Snmp` check type, site or global credentials, readings in the `metric_samples` hypertable with history charts. Templates so far: uptime, interfaces (status, traffic, errors), CPU. Memory, fans, PSU and PoE budget are vendor templates still to write. Templates are JSON compiled into the API and portal, not a database entity, until custom templates are needed. |
 | 30-day raw history, 13-month rollups | **partial**: raw retention is 90 days; rollups need a worker aggregate job because Azure's Timescale has no continuous aggregates |
-| Template library: Cisco, Meraki (API), Ubiquiti, Ruckus, Araknis, Fortinet, APC, CyberPower, Middle Atlantic, WattBox, Axis, Hanwha, Avigilon | **new**: ship as JSON in the repo, seeded on API start |
-| UPS status: battery charge, runtime remaining, on-battery/on-mains, load %, input/output voltage, battery self-test result and replace-battery flag | **new** (added 2026-11-10): one generic template on the standard UPS-MIB (RFC 1628) covers most network cards; APC (PowerNet-MIB) and CyberPower templates add the vendor-only fields. "On battery" and "replace battery" are state alerts that page at once; runtime and charge are thresholds. Same SNMP poller, no extra agent work. |
-| Environmental sensors: room temperature, humidity, water/leak and dry-contact inputs | **new** (added 2026-11-10): SNMP sensors such as APC NetBotz, the APC/CyberPower UPS card probes, AKCP sensorProbe and Middle Atlantic/WattBox units. Readings get per-sensor thresholds (e.g. above 30 °C, above 60 % RH) and the site card shows the latest values. Wireless (MQTT/LoRaWAN) sensors stay with Phase 4 OT/IoT reach. |
+| Template library: Cisco, Meraki (API), Ubiquiti, Ruckus, Araknis, Fortinet, APC, CyberPower, Middle Atlantic, WattBox, Axis, Hanwha, Avigilon | **partial**: APC and CyberPower are in (`src/Nms.Shared/Snmp/templates.json`); the rest follow the first sites' equipment |
+| UPS status: battery charge, runtime remaining, on-battery/on-mains, load %, input/output voltage, battery self-test result and replace-battery flag | **done** except the self-test result (agent 0.1.8): `ups` (UPS-MIB, RFC 1628), `apc-ups` (PowerNet-MIB) and `cyberpower-ups` (CPS-MIB) templates with default limits for on battery, replace battery, low charge, low runtime, high load and temperature. |
+| Environmental sensors: room temperature, humidity, water/leak and dry-contact inputs | **partial** (agent 0.1.8): APC NMC temperature/humidity probes (`apc-environment`) with per-probe limits, shown on the device page. NetBotz, CyberPower probes, AKCP, Middle Atlantic/WattBox, leak and dry-contact inputs, and latest values on the site card, are still to do. Wireless (MQTT/LoRaWAN) sensors stay with Phase 4 OT/IoT reach. |
 
 **Alerting**
 
 | Item | State |
 |---|---|
-| Triggers: state, threshold, volume, change | **partial**: state is done (failure threshold, flap handling); threshold/volume/change come with SNMP metrics |
+| Triggers: state, threshold, volume, change | **partial**: state (failure threshold, flap handling) and threshold (per SNMP reading and table row, `docs/snmp.md`) are done; volume and change are new |
 | Parent-device dependency suppression (switch down → suppress downstream) | **partial**: agent-offline suppresses the whole site and the Azure gateway probe says whether the WAN is down; per-device parent links are new and need the switch-port mapping |
 | Maintenance windows and site-level schedules | **done** (windows per site or device); recurring schedules are new |
 | Channels: Teams, email, webhook; shared alert profiles per customer | **partial**: Teams and ACS email with digest and cooldown are done; generic webhook and per-customer profiles are new |

@@ -23,7 +23,7 @@ else
             <tr class="@(i.ClosedUtc is null ? "down-row" : "")">
                 <td>@i.OpenedUtc.ToLocalTime().ToString("g")</td>
                 <td>@(siteNames.GetValueOrDefault(i.SiteId, "?"))</td>
-                <td>@(i.Kind switch { IncidentKind.AgentOffline => "Agent offline", IncidentKind.GatewayDown => "Gateway unreachable", _ => "Check down" })</td>
+                <td>@(i.Kind switch { IncidentKind.AgentOffline => "Agent offline", IncidentKind.GatewayDown => "Gateway unreachable", IncidentKind.Threshold => "Threshold", _ => "Check down" })</td>
                 <td>@i.Summary</td>
                 <td>@Duration(i)</td>
                 <td>@(i.AckBy is null ? "" : $"{i.AckBy} @ {i.AckUtc?.ToLocalTime():t}")</td>

@@ -30,7 +30,8 @@ public sealed class AlertRouter
             if (!Matches(r, incident, device)) continue;
             if (r.CriticalOnly && device is { IsCritical: false }) continue;
 
-            var key = (r.Id, incident.CheckId ?? incident.AgentId ?? incident.SiteId);
+            // Each limit has its own cooldown, so "on battery" is not held back by a "load high" sent a minute earlier.
+            var key = (r.Id, incident.ThresholdId ?? incident.CheckId ?? incident.AgentId ?? incident.SiteId);
             if (_lastSent.TryGetValue(key, out var last) && now - last < TimeSpan.FromSeconds(r.CooldownSec)) continue;
             _lastSent[key] = now;
             targets.Add(new Target(r, r.Channel));

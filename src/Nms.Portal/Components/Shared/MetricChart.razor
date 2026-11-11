@@ -1,0 +1,52 @@
+@* Inline SVG trend of one SNMP reading: average line, min/max band when the API bucketed the points, dashed limit line. *@
+@if (Points.Count == 0)
+{
+    <div class="muted">No readings for this period.</div>
+}
+else
+{
+    <svg viewBox="0 0 @W @H" class="chart" preserveAspectRatio="none" role="img" aria-label="@Label over time">
+        <line x1="@Pad" y1="@(H - Pad)" x2="@(W - Pad)" y2="@(H - Pad)" class="axis" />
+        <line x1="@Pad" y1="@Pad" x2="@Pad" y2="@(H - Pad)" class="axis" />
+        @if (Points.Any(p => p.Min is not null))
+        {
+            <polygon points="@Band" class="band" />
+        }
+        @if (Limit is { } l && l >= Lo && l <= Hi)
+        {
+            <line x1="@Pad" y1="@Y(l).ToString("F1")" x2="@(W - Pad)" y2="@Y(l).ToString("F1")" class="limit" />
+        }
+        <polyline points="@Line" class="line" />
+        <text x="@Pad" y="@(Pad - 4)" class="label">@Format(Hi)</text>
+        <text x="@(Pad + 4)" y="@(H - Pad - 4)" class="label">@Format(Lo)</text>
+        <text x="@Pad" y="@(H - 2)" class="label">@Points[0].Time.ToLocalTime().ToString("g")</text>
+        <text x="@(W - Pad)" y="@(H - 2)" class="label" text-anchor="end">@Points[^1].Time.ToLocalTime().ToString("g")</text>
+    </svg>
+}
+
+@code {
+    [Parameter] public List<MetricPoint> Points { get; set; } = new();
+    [Parameter] public Func<double, string> Format { get; set; } = v => v.ToString("0.##");
+    [Parameter] public double? Limit { get; set; }
+    [Parameter] public string Label { get; set; } = "Reading";
+    const int W = 800, H = 180, Pad = 24;
+
+    double Lo => Math.Min(0, Points.Min(p => p.Min ?? p.Value));
+    double Hi
+    {
+        get
+        {
+            var max = Math.Max(Points.Max(p => p.Max ?? p.Value), Limit ?? double.MinValue);
+            return max <= Lo ? Lo + 1 : max * 1.05;
+        }
+    }
+    double X(DateTimeOffset t)
+    {
+        var (a, b) = (Points[0].Time, Points[^1].Time);
+        return b == a ? W / 2.0 : Pad + (t - a).TotalSeconds / (b - a).TotalSeconds * (W - 2.0 * Pad);
+    }
+    double Y(double v) => (H - Pad) - (v - Lo) / (Hi - Lo) * (H - 2 * Pad);
+    string Line => string.Join(" ", Points.Select(p => $"{X(p.Time):F1},{Y(p.Value):F1}"));
+    string Band => string.Join(" ", Points.Select(p => $"{X(p.Time):F1},{Y(p.Max ?? p.Value):F1}")
+        .Concat(Points.AsEnumerable().Reverse().Select(p => $"{X(p.Time):F1},{Y(p.Min ?? p.Value):F1}")));
+}

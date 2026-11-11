@@ -100,6 +100,58 @@ public class Check
     public DateTimeOffset? LastResultUtc { get; set; }
     public int? LastLatencyMs { get; set; }
     public DateTimeOffset? StateChangedUtc { get; set; }
+    /// <summary>SNMP checks: key into the template library (Nms.Shared/Snmp/templates.json).</summary>
+    public string? SnmpTemplate { get; set; }
+    public Guid? SnmpCredentialId { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public SnmpCredential? SnmpCredential { get; set; }
+    /// <summary>SNMP checks: the newest readings as JSON (MetricSampleDto[]), denormalised for the device page.</summary>
+    public string? LastMetricsJson { get; set; }
+    public ICollection<MetricThreshold> Thresholds { get; set; } = new List<MetricThreshold>();
+}
+
+/// <summary>
+/// How agents log in to devices' SNMP agents. SiteId null makes it usable at every site. Community and passwords are
+/// write-only through the API (never returned) and reach only the agents of sites whose checks use them.
+/// </summary>
+public class SnmpCredential
+{
+    public Guid Id { get; set; }
+    public Guid? SiteId { get; set; }
+    public string Name { get; set; } = "";
+    public SnmpVersion Version { get; set; }
+    public string? Community { get; set; }
+    public string? User { get; set; }
+    public SnmpAuth Auth { get; set; }
+    public string? AuthPassword { get; set; }
+    public SnmpPriv Priv { get; set; }
+    public string? PrivPassword { get; set; }
+    public string? Context { get; set; }
+}
+
+/// <summary>A limit on one SNMP reading. Instance null applies to every row of a table metric.</summary>
+public class MetricThreshold
+{
+    public Guid Id { get; set; }
+    public Guid CheckId { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public Check Check { get; set; } = null!;
+    public string MetricKey { get; set; } = "";
+    public string? Instance { get; set; }
+    public ThresholdOp Op { get; set; }
+    public double Value { get; set; }
+    public string Label { get; set; } = "";
+    public bool Enabled { get; set; } = true;
+}
+
+/// <summary>Timescale hypertable of SNMP readings. Instance is "" for scalars so it can sit in the key.</summary>
+public class MetricSample
+{
+    public DateTimeOffset Time { get; set; }
+    public Guid CheckId { get; set; }
+    public string Metric { get; set; } = "";
+    public string Instance { get; set; } = "";
+    public double Value { get; set; }
 }
 
 /// <summary>Timescale hypertable. No single-column PK; (Time, CheckId) is unique.</summary>
@@ -125,6 +177,9 @@ public class Incident
     public string? AckBy { get; set; }
     public DateTimeOffset? AckUtc { get; set; }
     public string Summary { get; set; } = "";
+    /// <summary>Threshold incidents: which limit, and which table row (interface, probe) crossed it ("" for scalars).</summary>
+    public Guid? ThresholdId { get; set; }
+    public string? MetricInstance { get; set; }
     public bool Notified { get; set; }
     public bool RecoveryNotified { get; set; }
 }

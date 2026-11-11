@@ -16,6 +16,8 @@ public static class TimescaleSql
         CREATE EXTENSION IF NOT EXISTS timescaledb;
         SELECT create_hypertable('nms.check_results', 'time',
             chunk_time_interval => INTERVAL '1 day', if_not_exists => TRUE);
+        SELECT create_hypertable('nms.metric_samples', 'time',
+            chunk_time_interval => INTERVAL '1 day', if_not_exists => TRUE);
         """;
 
     public static readonly IReadOnlyList<(string Feature, string Sql)> Optional =
@@ -29,6 +31,16 @@ public static class TimescaleSql
             """),
         ("retention policy", """
             SELECT add_retention_policy('nms.check_results', INTERVAL '90 days', if_not_exists => TRUE);
+            """),
+        ("metric compression", """
+            ALTER TABLE nms.metric_samples SET (
+                timescaledb.compress,
+                timescaledb.compress_segmentby = 'check_id, metric',
+                timescaledb.compress_orderby = 'time DESC');
+            SELECT add_compression_policy('nms.metric_samples', INTERVAL '7 days', if_not_exists => TRUE);
+            """),
+        ("metric retention policy", """
+            SELECT add_retention_policy('nms.metric_samples', INTERVAL '90 days', if_not_exists => TRUE);
             """),
         ("5-minute continuous aggregate", """
             CREATE MATERIALIZED VIEW IF NOT EXISTS nms.check_results_5m

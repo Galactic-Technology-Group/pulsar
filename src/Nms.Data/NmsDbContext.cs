@@ -18,6 +18,9 @@ public class NmsDbContext(DbContextOptions<NmsDbContext> options) : DbContext(op
     public DbSet<AgentRelease> AgentReleases => Set<AgentRelease>();
     public DbSet<AgentClaim> AgentClaims => Set<AgentClaim>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+    public DbSet<SnmpCredential> SnmpCredentials => Set<SnmpCredential>();
+    public DbSet<MetricThreshold> MetricThresholds => Set<MetricThreshold>();
+    public DbSet<MetricSample> MetricSamples => Set<MetricSample>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -52,6 +55,35 @@ public class NmsDbContext(DbContextOptions<NmsDbContext> options) : DbContext(op
             e.HasIndex(x => x.DeviceId);
             e.HasIndex(x => x.State);
             e.HasOne(x => x.Device).WithMany(d => d.Checks).HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
+            // A credential in use cannot be deleted (the API answers 409 first; Restrict is the backstop).
+            e.HasOne(x => x.SnmpCredential).WithMany().HasForeignKey(x => x.SnmpCredentialId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.SnmpTemplate).HasMaxLength(64);
+            e.Property(x => x.LastMetricsJson).HasColumnType("jsonb");
+        });
+
+        b.Entity<SnmpCredential>(e =>
+        {
+            e.HasIndex(x => new { x.SiteId, x.Name }).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(128);
+        });
+
+        b.Entity<MetricThreshold>(e =>
+        {
+            e.HasIndex(x => x.CheckId);
+            e.HasOne(x => x.Check).WithMany(c => c.Thresholds).HasForeignKey(x => x.CheckId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.MetricKey).HasMaxLength(64);
+            e.Property(x => x.Instance).HasMaxLength(128);
+            e.Property(x => x.Label).HasMaxLength(128);
+        });
+
+        b.Entity<MetricSample>(e =>
+        {
+            e.ToTable("metric_samples");
+            // Timescale requires the partitioning column in every unique index.
+            e.HasKey(x => new { x.Time, x.CheckId, x.Metric, x.Instance });
+            e.HasIndex(x => new { x.CheckId, x.Metric, x.Time }).IsDescending(false, false, true);
+            e.Property(x => x.Metric).HasMaxLength(64);
+            e.Property(x => x.Instance).HasMaxLength(128);
         });
 
         b.Entity<CheckResult>(e =>
@@ -68,6 +100,8 @@ public class NmsDbContext(DbContextOptions<NmsDbContext> options) : DbContext(op
             e.HasIndex(x => new { x.SiteId, x.ClosedUtc });
             e.HasIndex(x => new { x.CheckId, x.ClosedUtc });
             e.HasIndex(x => new { x.AgentId, x.ClosedUtc });
+            e.HasIndex(x => new { x.ThresholdId, x.ClosedUtc });
+            e.Property(x => x.MetricInstance).HasMaxLength(128);
         });
 
         b.Entity<AlertRule>(e =>
@@ -100,7 +134,7 @@ public class NmsDbContext(DbContextOptions<NmsDbContext> options) : DbContext(op
         foreach (var entity in b.Model.GetEntityTypes())
         {
             var table = entity.GetTableName();
-            if (table is not null && table != "check_results")
+            if (table is not null && table != "check_results" && table != "metric_samples")
                 entity.SetTableName(ToSnake(table));
             var storeObject = Microsoft.EntityFrameworkCore.Metadata.StoreObjectIdentifier.Table(entity.GetTableName()!, entity.GetSchema());
             foreach (var prop in entity.GetProperties())

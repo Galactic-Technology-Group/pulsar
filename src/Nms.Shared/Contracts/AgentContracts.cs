@@ -21,8 +21,11 @@ public sealed record HeartbeatDto(string AgentVersion, DateTimeOffset AgentTimeU
 /// <summary>The agent restored its previous binary after a self-update failed. Reported in every heartbeat until a later update confirms itself.</summary>
 public sealed record UpdateRollbackDto(string FailedVersion, string? RestoredVersion, string Reason, DateTimeOffset AtUtc);
 
-/// <summary>A single probe outcome. Time is the agent's clock in UTC.</summary>
-public sealed record CheckResultDto(Guid CheckId, DateTimeOffset Time, bool Ok, int? LatencyMs, string? Detail);
+/// <summary>A single probe outcome. Time is the agent's clock in UTC. Metrics carries SNMP readings (null for other probes).</summary>
+public sealed record CheckResultDto(Guid CheckId, DateTimeOffset Time, bool Ok, int? LatencyMs, string? Detail, IReadOnlyList<MetricSampleDto>? Metrics = null);
+
+/// <summary>One reading from an SNMP check. Instance names the table row (interface name, sensor name); null for scalars.</summary>
+public sealed record MetricSampleDto(string Key, string? Instance, double Value);
 
 public sealed record ResultsBatch(Guid AgentId, IReadOnlyList<CheckResultDto> Results);
 
@@ -51,7 +54,20 @@ public sealed record CheckDefinition(
     string? BodyRegex,
     int IntervalSec,
     int TimeoutMs,
-    bool Enabled);
+    bool Enabled,
+    SnmpCredentialDto? Snmp = null,
+    IReadOnlyList<SnmpMetricDef>? Metrics = null);
+
+/// <summary>How the agent authenticates to a device's SNMP agent. Sent only to agents, over the hub, never to the portal.</summary>
+public sealed record SnmpCredentialDto(SnmpVersion Version, string? Community, string? User = null, SnmpAuth Auth = SnmpAuth.None,
+    string? AuthPassword = null, SnmpPriv Priv = SnmpPriv.None, string? PrivPassword = null, string? Context = null);
+
+/// <summary>
+/// One value to read. A scalar Oid includes its instance (".0"); a Table Oid is a column that is walked, each row becoming an
+/// instance named from LabelOid (the same table's name column) or, without one, the row index. FallbackOid is walked when
+/// Oid has no rows (32-bit ifInOctets on a device without the 64-bit ifHCInOctets).
+/// </summary>
+public sealed record SnmpMetricDef(string Key, string Oid, MetricKind Kind = MetricKind.Gauge, double Scale = 1, bool Table = false, string? LabelOid = null, string? FallbackOid = null);
 
 public sealed record DiscoveryRequest(Guid RequestId, string Cidr, int? VlanId, int TimeoutMs = 1000);
 

@@ -98,6 +98,7 @@ public sealed class NotificationDispatcher(
     {
         IncidentKind.AgentOffline => i.Summary.Split(" is OFFLINE")[0] + " is back online" + (verdict is null ? "" : "; " + verdict.Text),
         IncidentKind.GatewayDown => i.Summary.Replace("is DOWN from Azure", "is reachable again from Azure"),
+        IncidentKind.Threshold => "Cleared: " + i.Summary,
         _ => i.Summary.Replace("is DOWN", "recovered"),
     };
 

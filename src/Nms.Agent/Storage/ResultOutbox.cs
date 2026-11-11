@@ -1,5 +1,7 @@
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
+using Nms.Shared;
 using Nms.Shared.Contracts;
 
 namespace Nms.Agent.Storage;
@@ -32,6 +34,16 @@ public sealed class ResultOutbox : IDisposable
                  latency_ms INTEGER NULL,
                  detail TEXT NULL);
              """);
+        // 0.1.8 added SNMP readings; an outbox created by an older agent gains the column in place.
+        if (!HasColumn("metrics")) Exec("ALTER TABLE outbox ADD COLUMN metrics TEXT NULL;");
+    }
+
+    private bool HasColumn(string name)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('outbox') WHERE name = $n";
+        cmd.Parameters.AddWithValue("$n", name);
+        return (long)cmd.ExecuteScalar()! > 0;
     }
 
     public void Enqueue(CheckResultDto r)
@@ -39,12 +51,13 @@ public sealed class ResultOutbox : IDisposable
         lock (_gate)
         {
             using var cmd = _conn.CreateCommand();
-            cmd.CommandText = "INSERT INTO outbox(check_id,time,ok,latency_ms,detail) VALUES($c,$t,$o,$l,$d)";
+            cmd.CommandText = "INSERT INTO outbox(check_id,time,ok,latency_ms,detail,metrics) VALUES($c,$t,$o,$l,$d,$m)";
             cmd.Parameters.AddWithValue("$c", r.CheckId.ToString());
             cmd.Parameters.AddWithValue("$t", r.Time.ToString("O"));
             cmd.Parameters.AddWithValue("$o", r.Ok ? 1 : 0);
             cmd.Parameters.AddWithValue("$l", (object?)r.LatencyMs ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$d", (object?)r.Detail ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$m", r.Metrics is null ? DBNull.Value : JsonSerializer.Serialize(r.Metrics, NmsJson.Options));
             cmd.ExecuteNonQuery();
         }
     }
@@ -67,7 +80,7 @@ public sealed class ResultOutbox : IDisposable
             var items = new List<CheckResultDto>(max);
             long lastId = 0;
             using var cmd = _conn.CreateCommand();
-            cmd.CommandText = "SELECT id,check_id,time,ok,latency_ms,detail FROM outbox ORDER BY id LIMIT $n";
+            cmd.CommandText = "SELECT id,check_id,time,ok,latency_ms,detail,metrics FROM outbox ORDER BY id LIMIT $n";
             cmd.Parameters.AddWithValue("$n", max);
             using var rd = cmd.ExecuteReader();
             while (rd.Read())
@@ -78,7 +91,8 @@ public sealed class ResultOutbox : IDisposable
                     DateTimeOffset.Parse(rd.GetString(2)),
                     rd.GetInt32(3) == 1,
                     rd.IsDBNull(4) ? null : rd.GetInt32(4),
-                    rd.IsDBNull(5) ? null : rd.GetString(5)));
+                    rd.IsDBNull(5) ? null : rd.GetString(5),
+                    rd.IsDBNull(6) ? null : JsonSerializer.Deserialize<List<MetricSampleDto>>(rd.GetString(6), NmsJson.Options)));
             }
             return (items, lastId);
         }

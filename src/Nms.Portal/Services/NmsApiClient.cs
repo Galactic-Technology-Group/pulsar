@@ -67,6 +67,20 @@ public sealed class NmsApiClient(HttpClient http, IServiceProvider services)
         Get<List<LatencyPoint>>($"api/checks/{checkId}/history?from={Uri.EscapeDataString(from.ToString("O"))}&to={Uri.EscapeDataString(to.ToString("O"))}");
     public Task<List<CheckResult>> GetRecentResultsAsync(Guid checkId, int limit = 50) => Get<List<CheckResult>>($"api/checks/{checkId}/results?limit={limit}");
 
+    // SNMP
+    public Task<List<SnmpCredentialView>> GetSnmpCredentialsAsync(Guid? siteId = null) =>
+        Get<List<SnmpCredentialView>>($"api/snmp/credentials{(siteId is null ? "" : $"?siteId={siteId}")}");
+    public Task<SnmpCredentialView> CreateSnmpCredentialAsync(SnmpCredentialInput input) => Post<SnmpCredentialView>("api/snmp/credentials", input);
+    public Task<SnmpCredentialView> UpdateSnmpCredentialAsync(Guid id, SnmpCredentialInput input) => Put<SnmpCredentialView>($"api/snmp/credentials/{id}", input);
+    public Task DeleteSnmpCredentialAsync(Guid id) => Delete($"api/snmp/credentials/{id}");
+    public Task<List<MetricThreshold>> GetThresholdsAsync(Guid checkId) => Get<List<MetricThreshold>>($"api/checks/{checkId}/thresholds");
+    public Task<MetricThreshold> CreateThresholdAsync(Guid checkId, ThresholdInput input) => Post<MetricThreshold>($"api/checks/{checkId}/thresholds", input);
+    public Task<MetricThreshold> UpdateThresholdAsync(Guid id, ThresholdInput input) => Put<MetricThreshold>($"api/thresholds/{id}", input);
+    public Task DeleteThresholdAsync(Guid id) => Delete($"api/thresholds/{id}");
+    public Task<List<MetricPoint>> GetMetricHistoryAsync(Guid checkId, string metric, string? instance, DateTimeOffset from, DateTimeOffset to) =>
+        Get<List<MetricPoint>>($"api/checks/{checkId}/metrics?metric={Uri.EscapeDataString(metric)}{(string.IsNullOrEmpty(instance) ? "" : $"&instance={Uri.EscapeDataString(instance)}")}" +
+            $"&from={Uri.EscapeDataString(from.ToString("O"))}&to={Uri.EscapeDataString(to.ToString("O"))}");
+
     // Incidents
     public Task<List<Incident>> GetIncidentsAsync(bool open = true, Guid? siteId = null, int limit = 200) =>
         Get<List<Incident>>($"api/incidents?open={open}&limit={limit}{(siteId is null ? "" : $"&siteId={siteId}")}");

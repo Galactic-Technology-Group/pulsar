@@ -16,6 +16,7 @@ public sealed class AgentOptions
     public int MaxConcurrentIcmp { get; set; } = 64;
     public int MaxConcurrentTcp { get; set; } = 32;
     public int MaxConcurrentHttp { get; set; } = 16;
+    public int MaxConcurrentSnmp { get; set; } = 16;
     /// <summary>Flush outbox when this many results are queued, regardless of the timer.</summary>
     public int ResultsBatchSize { get; set; } = 500;
     /// <summary>Accept self-signed API certs. Dev only.</summary>
