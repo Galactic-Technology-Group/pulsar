@@ -2,8 +2,25 @@
 @attribute [Authorize(Roles = "Nms.Admin")]
 @inject NmsApiClient Api
 
-<PageTitle>Settings</PageTitle>
-<h1>Settings</h1>
+<PageTitle>App settings</PageTitle>
+<h1>App settings</h1>
+<p class="small muted">Settings here apply to every site. Each site's own credentials, alert rules, maintenance windows, gateway check and location are on its settings page, listed below.</p>
+
+<section class="card">
+    <h3>Site settings</h3>
+    <table class="grid">
+        <thead><tr><th>Site</th><th>SNMP credentials</th><th>Alert rules</th><th>Upcoming maintenance</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var s in siteNames.OrderBy(s => s.Value))
+        {
+            <tr><td><a href="sites/@s.Key">@s.Value</a></td>
+                <td>@siteCreds.GetValueOrDefault(s.Key)</td><td>@siteRules.GetValueOrDefault(s.Key)</td><td>@siteWindows.GetValueOrDefault(s.Key)</td>
+                <td><a href="sites/@s.Key/settings">Settings</a></td></tr>
+        }
+        @if (siteNames.Count == 0) { <tr><td colspan="5" class="muted small">No sites yet. Add one under <a href="sites">Sites</a>.</td></tr> }
+        </tbody>
+    </table>
+</section>
 
 <section class="card">
     <h3>Notification channels</h3>
@@ -28,96 +45,11 @@
     </div>
 </section>
 
-<section class="card">
-    <h3>Alert rules</h3>
-    <table class="grid">
-        <thead><tr><th>Name</th><th>Scope</th><th>Target</th><th>Channel</th><th>Critical only</th><th>Cooldown</th><th></th></tr></thead>
-        <tbody>
-        @foreach (var r in rules)
-        {
-            <tr><td>@r.Name</td><td>@r.Scope</td><td>@(r.Scope switch { AlertScope.Site => siteNames.GetValueOrDefault(r.SiteId ?? Guid.Empty, "?"), AlertScope.Tag => r.Tag, AlertScope.Device => r.DeviceId?.ToString(), _ => "all" })</td>
-                <td>@r.Channel?.Name</td><td>@(r.CriticalOnly ? "yes" : "no")</td><td>@r.CooldownSec s</td>
-                <td><button class="danger small" @onclick="() => DeleteRule(r.Id)">Delete</button></td></tr>
-        }
-        </tbody>
-    </table>
-    <div class="form-row">
-        <input placeholder="Name" @bind="rl.Name" />
-        <select @bind="rl.Scope">
-            <option value="@AlertScope.Global">All sites</option>
-            <option value="@AlertScope.Site">One site</option>
-            <option value="@AlertScope.Tag">Devices with tag</option>
-        </select>
-        @if (rl.Scope == AlertScope.Site)
-        {
-            <select @bind="rl.SiteId"><option value="">— site —</option>@foreach (var s in siteNames) { <option value="@s.Key">@s.Value</option> }</select>
-        }
-        @if (rl.Scope == AlertScope.Tag) { <input placeholder="tag" @bind="rl.Tag" /> }
-        <select @bind="rl.ChannelId"><option value="">— channel —</option>@foreach (var c in channels) { <option value="@c.Id">@c.Name</option> }</select>
-        <label><input type="checkbox" @bind="rl.CriticalOnly" /> critical only</label>
-        <label>cooldown <input type="number" @bind="rl.CooldownSec" style="width:6em" /> s</label>
-        <button class="primary" @onclick="CreateRule" disabled="@(string.IsNullOrWhiteSpace(rl.Name) || rl.ChannelId is null)">Add rule</button>
-    </div>
-</section>
+<AlertRulesEditor SiteNames="siteNames" @key="channelsVersion" />
 
-<section class="card">
-    <h3>Maintenance windows</h3>
-    <table class="grid">
-        <thead><tr><th>Scope</th><th>Start</th><th>End</th><th>Reason</th><th></th></tr></thead>
-        <tbody>
-        @foreach (var m in maintenance)
-        {
-            <tr><td>@(m.DeviceId is not null ? $"device {m.DeviceId}" : m.SiteId is not null ? siteNames.GetValueOrDefault(m.SiteId.Value, "?") : "all")</td>
-                <td>@m.StartUtc.ToLocalTime().ToString("g")</td><td>@m.EndUtc.ToLocalTime().ToString("g")</td><td>@m.Reason</td>
-                <td><button class="danger small" @onclick="() => DeleteMaintenance(m.Id)">Delete</button></td></tr>
-        }
-        </tbody>
-    </table>
-    <div class="form-row">
-        <select @bind="mw.SiteId"><option value="">all sites</option>@foreach (var s in siteNames) { <option value="@s.Key">@s.Value</option> }</select>
-        <label>from <input type="datetime-local" @bind="mw.Start" /></label>
-        <label>to <input type="datetime-local" @bind="mw.End" /></label>
-        <input placeholder="reason" @bind="mw.Reason" />
-        <button class="primary" @onclick="CreateMaintenance">Add window</button>
-    </div>
-</section>
+<MaintenanceEditor />
 
-<section class="card">
-    <h3>SNMP credentials</h3>
-    <p class="small">How agents log in to switches, UPS cards and sensors. Communities and passwords are write-only: they are sent to the agents that poll with them and never shown again. Leave a secret blank when editing to keep it. Prefer SNMPv3 with SHA-256 and AES where the device offers it.</p>
-    <table class="grid">
-        <thead><tr><th>Name</th><th>Site</th><th>Version</th><th>User</th><th>Auth / privacy</th><th>Checks</th><th></th></tr></thead>
-        <tbody>
-        @foreach (var c in creds)
-        {
-            <tr><td>@c.Name</td><td>@(c.SiteId is null ? "all sites" : siteNames.GetValueOrDefault(c.SiteId.Value, "?"))</td><td>@(c.Version == SnmpVersion.V2c ? "v2c" : "v3")</td>
-                <td>@c.User</td><td>@(c.Version == SnmpVersion.V3 ? $"{c.Auth} / {c.Priv}" : "community")</td><td>@c.Checks</td>
-                <td class="actions"><button class="small" @onclick="() => EditCred(c)">Edit</button>
-                    <button class="danger small" @onclick="() => DeleteCred(c.Id)" disabled="@(c.Checks > 0)" title="@(c.Checks > 0 ? "In use by SNMP checks" : "")">Delete</button></td></tr>
-        }
-        </tbody>
-    </table>
-    <div class="form-row">
-        <input placeholder="Name" @bind="sc.Name" />
-        <select @bind="sc.SiteId"><option value="">all sites</option>@foreach (var s in siteNames) { <option value="@s.Key">@s.Value</option> }</select>
-        <select @bind="sc.Version"><option value="@SnmpVersion.V2c">SNMPv2c</option><option value="@SnmpVersion.V3">SNMPv3</option></select>
-        @if (sc.Version == SnmpVersion.V2c)
-        {
-            <input type="password" placeholder="@(sc.EditingId is null ? "community" : "community (blank = keep)")" @bind="sc.Community" autocomplete="new-password" />
-        }
-        else
-        {
-            <input placeholder="user" @bind="sc.User" />
-            <select @bind="sc.Auth">@foreach (var a in Enum.GetValues<SnmpAuth>()) { <option value="@a">auth @a</option> }</select>
-            @if (sc.Auth != SnmpAuth.None) { <input type="password" placeholder="@(sc.EditingId is null ? "auth password" : "auth password (blank = keep)")" @bind="sc.AuthPassword" autocomplete="new-password" /> }
-            <select @bind="sc.Priv">@foreach (var p in Enum.GetValues<SnmpPriv>()) { <option value="@p">privacy @p</option> }</select>
-            @if (sc.Priv != SnmpPriv.None) { <input type="password" placeholder="@(sc.EditingId is null ? "privacy password" : "privacy password (blank = keep)")" @bind="sc.PrivPassword" autocomplete="new-password" /> }
-            <input placeholder="context (optional)" @bind="sc.Context" style="width:10em" />
-        }
-        <button class="primary" @onclick="SaveCred" disabled="@string.IsNullOrWhiteSpace(sc.Name)">@(sc.EditingId is null ? "Add credential" : "Save")</button>
-        @if (sc.EditingId is not null) { <button class="small" @onclick="() => sc = new()">Cancel</button> }
-    </div>
-</section>
+<SnmpCredentialsEditor />
 
 <section class="card">
     <h3>Agent releases</h3>
@@ -146,16 +78,12 @@
 
 @code {
     private List<NotificationChannel> channels = new();
-    private List<AlertRule> rules = new();
-    private List<MaintenanceWindow> maintenance = new();
     private List<AgentRelease> releases = new();
-    private List<SnmpCredentialView> creds = new();
-    private CredForm sc = new();
     private Dictionary<Guid, string> siteNames = new();
+    private Dictionary<Guid, int> siteCreds = new(), siteRules = new(), siteWindows = new();
+    private int channelsVersion;   // re-creates the rules editor so its channel list follows changes made here
     private string? error;
     private ChannelForm ch = new();
-    private RuleForm rl = new();
-    private MaintForm mw = new();
     private ReleaseForm rel = new();
     private string importTag = "";
     private bool importing;
@@ -167,10 +95,13 @@
     }
     private async Task Load()
     {
-        channels = await Api.GetChannelsAsync(); rules = await Api.GetRulesAsync();
-        maintenance = await Api.GetMaintenanceAsync(); releases = await Api.GetReleasesAsync();
-        creds = await Api.GetSnmpCredentialsAsync();
+        channels = await Api.GetChannelsAsync(); releases = await Api.GetReleasesAsync();
+        siteCreds = Count((await Api.GetSnmpCredentialsAsync()).Select(c => c.SiteId));
+        siteRules = Count((await Api.GetRulesAsync()).Where(r => r.Scope == AlertScope.Site).Select(r => r.SiteId));
+        siteWindows = Count((await Api.GetMaintenanceAsync()).Where(m => m.EndUtc > DateTimeOffset.UtcNow).Select(m => m.SiteId));
     }
+    private static Dictionary<Guid, int> Count(IEnumerable<Guid?> ids) =>
+        ids.Where(i => i is not null).GroupBy(i => i!.Value).ToDictionary(g => g.Key, g => g.Count());
 
     private async Task Guard(Func<Task> f) { error = null; try { await f(); await Load(); } catch (Exception ex) { error = ex.Message; } }
 
@@ -179,22 +110,9 @@
         var json = ch.Type == NotificationChannelType.Email
             ? System.Text.Json.JsonSerializer.Serialize(new { to = ch.Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) })
             : ch.Value.StartsWith("secret:") ? System.Text.Json.JsonSerializer.Serialize(new { secretName = ch.Value[7..] }) : System.Text.Json.JsonSerializer.Serialize(new { url = ch.Value });
-        await Api.CreateChannelAsync(new ChannelInput(ch.Name, ch.Type, json)); ch = new();
+        await Api.CreateChannelAsync(new ChannelInput(ch.Name, ch.Type, json)); ch = new(); channelsVersion++;
     });
-    private Task DeleteChannel(Guid id) => Guard(() => Api.DeleteChannelAsync(id));
-    private Task CreateRule() => Guard(async () => { await Api.CreateRuleAsync(new RuleInput(rl.Name, rl.Scope, rl.ChannelId!.Value, rl.SiteId, null, rl.Tag, rl.CriticalOnly, rl.CooldownSec)); rl = new(); });
-    private Task DeleteRule(Guid id) => Guard(() => Api.DeleteRuleAsync(id));
-    private Task CreateMaintenance() => Guard(async () => { await Api.CreateMaintenanceAsync(new MaintenanceInput(mw.SiteId, null, new DateTimeOffset(mw.Start), new DateTimeOffset(mw.End), mw.Reason)); mw = new(); });
-    private Task DeleteMaintenance(Guid id) => Guard(() => Api.DeleteMaintenanceAsync(id));
-    private Task SaveCred() => Guard(async () =>
-    {
-        var input = new SnmpCredentialInput(sc.Name, sc.Version, sc.SiteId, Blank(sc.Community), Blank(sc.User), sc.Auth, Blank(sc.AuthPassword), sc.Priv, Blank(sc.PrivPassword), Blank(sc.Context));
-        if (sc.EditingId is { } id) await Api.UpdateSnmpCredentialAsync(id, input); else await Api.CreateSnmpCredentialAsync(input);
-        sc = new();
-    });
-    private void EditCred(SnmpCredentialView c) => sc = new CredForm { EditingId = c.Id, Name = c.Name, SiteId = c.SiteId, Version = c.Version, User = c.User, Auth = c.Auth, Priv = c.Priv, Context = c.Context };
-    private Task DeleteCred(Guid id) => Guard(() => Api.DeleteSnmpCredentialAsync(id));
-    private static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
+    private Task DeleteChannel(Guid id) => Guard(async () => { await Api.DeleteChannelAsync(id); channelsVersion++; });
     private Task CreateRelease() => Guard(async () => { await Api.CreateReleaseAsync(new ReleaseInput(rel.Version, rel.DownloadUrlX64, rel.DownloadUrlArm64, rel.Sha256X64, rel.Sha256Arm64)); rel = new(); });
     private async Task ImportRelease()
     {
@@ -206,13 +124,5 @@
     private static string Mask(string json) => System.Text.RegularExpressions.Regex.Replace(json, "(https://[^\"]{12})[^\"]*", "$1…");
 
     private sealed class ChannelForm { public string Name { get; set; } = ""; public NotificationChannelType Type { get; set; } public string Value { get; set; } = ""; }
-    private sealed class RuleForm { public string Name { get; set; } = ""; public AlertScope Scope { get; set; } public Guid? SiteId { get; set; } public string? Tag { get; set; } public Guid? ChannelId { get; set; } public bool CriticalOnly { get; set; } = true; public int CooldownSec { get; set; } = 300; }
-    private sealed class MaintForm { public Guid? SiteId { get; set; } public DateTime Start { get; set; } = DateTime.Now; public DateTime End { get; set; } = DateTime.Now.AddHours(2); public string Reason { get; set; } = ""; }
-    private sealed class CredForm
-    {
-        public Guid? EditingId { get; set; } public string Name { get; set; } = ""; public Guid? SiteId { get; set; } public SnmpVersion Version { get; set; } = SnmpVersion.V3;
-        public string? Community { get; set; } public string? User { get; set; } public SnmpAuth Auth { get; set; } = SnmpAuth.Sha256; public string? AuthPassword { get; set; }
-        public SnmpPriv Priv { get; set; } = SnmpPriv.Aes128; public string? PrivPassword { get; set; } public string? Context { get; set; }
-    }
     private sealed class ReleaseForm { public string Version { get; set; } = ""; public string DownloadUrlX64 { get; set; } = ""; public string DownloadUrlArm64 { get; set; } = ""; public string Sha256X64 { get; set; } = ""; public string Sha256Arm64 { get; set; } = ""; }
 }

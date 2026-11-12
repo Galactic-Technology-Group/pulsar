@@ -8,18 +8,8 @@ else
 {
     <PageTitle>@site.Name</PageTitle>
     <h1>@site.Name <small class="muted">@site.VlanMode @(site.Address is null ? "" : " · " + site.Address)</small></h1>
-
     <AuthorizeView Roles="Nms.Admin,Nms.Operator">
-        <details class="card">
-            <summary>Location @(site.Latitude is null ? "(no map position)" : $"({site.Latitude:0.#####}, {site.Longitude:0.#####})")</summary>
-            <div class="form-row">
-                <label>Address <input @bind="siteAddress" placeholder="street, city, state" style="min-width:22em" /></label>
-                <label>Latitude <input type="number" step="any" @bind="siteLat" style="width:9em" /></label>
-                <label>Longitude <input type="number" step="any" @bind="siteLon" style="width:9em" /></label>
-                <button class="small" @onclick="SaveLocation">Save</button>
-            </div>
-            <p class="small muted">Coordinates place the site on the map view (roadmap Phase 1). Copy them from any map as decimal degrees.</p>
-        </details>
+        <p class="small"><a href="sites/@SiteId/settings">Site settings</a> <span class="muted">· location, gateway check, SNMP credentials, alert rules, maintenance</span></p>
     </AuthorizeView>
 
     <section class="card">
@@ -116,12 +106,7 @@ else
                 }
             </p>
             <AuthorizeView Roles="Nms.Admin,Nms.Operator">
-                <div class="form-row">
-                    <label>Public address <input @bind="gatewayAddress" placeholder="203.0.113.1 or site.example.com" style="min-width:18em" /></label>
-                    <label>TCP port <input type="number" @bind="gatewayPort" placeholder="443" style="width:6em" /></label>
-                    <button class="small" @onclick="SaveGateway" disabled="@(gatewayPort is null || gatewayAddress == gateway.Address && gatewayPort == gc?.Port)">Save</button>
-                    <span class="muted small">Azure cannot ping outward, so the worker opens a TCP connection instead: a reply or a refusal both count as reachable, silence does not. Pick a port the gateway answers on from the internet (HTTPS admin, SSL-VPN, SSH).</span>
-                </div>
+                <p class="small muted">@(string.IsNullOrEmpty(gateway.Address) ? "Set the public address and port" : "Change the address or port") in <a href="sites/@SiteId/settings">site settings</a>.</p>
             </AuthorizeView>
         </section>
     }
@@ -176,8 +161,6 @@ else
     private List<Agent> agents = new();
     private List<Device> devices = new();
     private Device? gateway;
-    private string gatewayAddress = "";
-    private int? gatewayPort;
     private string newAgentName = "";
     private AgentCreated? token;
     private DeviceForm dev = new();
@@ -198,31 +181,9 @@ else
     private async Task Load()
     {
         site = await Api.GetSiteAsync(SiteId);
-        if (site is not null) { siteAddress = site.Address; siteLat = site.Latitude; siteLon = site.Longitude; }
         agents = await Api.GetAgentsAsync(SiteId);
         devices = await Api.GetDevicesAsync(SiteId);
         gateway = devices.FirstOrDefault(d => d.Kind == DeviceKind.Gateway);
-        if (gateway is not null && !gatewayLoaded)
-        {
-            gatewayAddress = gateway.Address;
-            gatewayPort = gateway.Checks.FirstOrDefault(c => c.Type == CheckType.GatewayPing)?.Port;
-            gatewayLoaded = true;
-        }
-    }
-    private bool gatewayLoaded;
-    private async Task SaveGateway()
-    {
-        if (gateway is null) return;
-        error = null;
-        try
-        {
-            await Api.UpdateDeviceAsync(gateway.Id, new DeviceInput(gateway.Name, gatewayAddress.Trim(), null, gateway.IsCritical, gateway.Tags, gateway.Notes, gateway.MacAddress));
-            if (gateway.Checks.FirstOrDefault(c => c.Type == CheckType.GatewayPing) is { } gc && gc.Port != gatewayPort)
-                await Api.UpdateCheckAsync(gc.Id, new CheckInput(CheckType.GatewayPing, gatewayPort, null, null, null, gc.IntervalSec, gc.TimeoutMs, gc.FailureThreshold, gc.Enabled));
-            devices = await Api.GetDevicesAsync(SiteId);
-            gateway = devices.FirstOrDefault(d => d.Kind == DeviceKind.Gateway);
-        }
-        catch (ApiException ex) { error = ex.Message; }
     }
     private async Task OnChanged() { await Load(); await InvokeAsync(StateHasChanged); }
     public void Dispose() => Live.Changed -= OnChanged;
@@ -265,19 +226,6 @@ else
         {
             await Api.UpdateDeviceAsync(d.Id, new DeviceInput(d.Name, address, d.VlanId, d.IsCritical, d.Tags, d.Notes, d.MacAddress));
             devices = await Api.GetDevicesAsync(SiteId);
-        }
-        catch (Exception ex) { error = ex.Message; }
-    }
-    private string? siteAddress;
-    private double? siteLat, siteLon;
-    private async Task SaveLocation()
-    {
-        if (site is null) return;
-        error = null;
-        try
-        {
-            site = await Api.UpdateSiteAsync(site.Id, new SiteInput(site.Name, site.TimeZone, site.VlanMode, siteAddress, siteLat, siteLon));
-            await Load();
         }
         catch (Exception ex) { error = ex.Message; }
     }

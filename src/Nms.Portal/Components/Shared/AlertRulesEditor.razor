@@ -1,0 +1,116 @@
+@* Alert rules for one scope. Global (SiteId null): rules for all sites and for tagged devices. A site: rules that
+   route only that site's incidents; the global and tag rules that also reach it are listed read-only. Admins only. *@
+@inject NmsApiClient Api
+
+<section class="card">
+    <h3>Alert rules</h3>
+    <p class="small">
+        @(SiteId is null
+            ? "Each rule sends matching incidents to a notification channel. Rules here cover every site, or devices with a tag at any site. Rules for one site live on that site's settings page."
+            : "Rules here send only this site's incidents to a channel, for example the site's own on-call address or Teams channel. The app-wide rules listed below apply as well.")
+    </p>
+    <table class="grid">
+        <thead><tr><th>Name</th><th>Applies to</th><th>Channel</th><th>Critical only</th><th>Cooldown</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var r in own)
+        {
+            <tr><td>@r.Name</td><td>@Target(r)</td><td>@r.Channel?.Name</td><td>@(r.CriticalOnly ? "yes" : "no")</td><td>@r.CooldownSec s</td>
+                <td><button class="danger small" @onclick="() => Delete(r.Id)">Delete</button></td></tr>
+        }
+        @foreach (var r in inherited)
+        {
+            <tr class="muted"><td>@r.Name</td><td>@Target(r)</td><td>@r.Channel?.Name</td><td>@(r.CriticalOnly ? "yes" : "no")</td><td>@r.CooldownSec s</td>
+                <td class="small"><a href="settings">edit in app settings</a></td></tr>
+        }
+        @if (own.Count == 0 && inherited.Count == 0) { <tr><td colspan="6" class="muted small">No rules: incidents are recorded but nobody is notified.</td></tr> }
+        </tbody>
+    </table>
+    @if (channels.Count == 0)
+    {
+        <p class="small muted">Add a notification channel in <a href="settings">app settings</a> first.</p>
+    }
+    else
+    {
+        <div class="form-row">
+            <input placeholder="Name" @bind="f.Name" />
+            @if (SiteId is null)
+            {
+                <select @bind="f.Scope">
+                    <option value="@AlertScope.Global">All sites</option>
+                    <option value="@AlertScope.Tag">Devices with tag</option>
+                </select>
+                @if (f.Scope == AlertScope.Tag) { <input placeholder="tag" @bind="f.Tag" /> }
+            }
+            <select @bind="f.ChannelId"><option value="">— channel —</option>@foreach (var c in channels) { <option value="@c.Id">@c.Name</option> }</select>
+            <label><input type="checkbox" @bind="f.CriticalOnly" /> critical only</label>
+            <label>cooldown <input type="number" @bind="f.CooldownSec" style="width:6em" /> s</label>
+            <button class="primary" @onclick="Create" disabled="@(string.IsNullOrWhiteSpace(f.Name) || f.ChannelId is null || f.Scope == AlertScope.Tag && string.IsNullOrWhiteSpace(f.Tag))">Add rule</button>
+        </div>
+    }
+    @if (error is not null) { <p class="error">@error</p> }
+</section>
+
+@code {
+    /// <summary>The site whose rules are edited; null edits the app-wide ones.</summary>
+    [Parameter] public Guid? SiteId { get; set; }
+    /// <summary>Site names, to label device- or site-scoped rules that show up in the global list.</summary>
+    [Parameter] public IReadOnlyDictionary<Guid, string>? SiteNames { get; set; }
+
+    private List<AlertRule> own = new(), inherited = new();
+    private List<NotificationChannel> channels = new();
+    private Form f = new();
+    private string? error;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        var rules = await Api.GetRulesAsync();
+        channels = await Api.GetChannelsAsync();
+        if (SiteId is null)
+        {
+            own = rules.Where(r => r.Scope != AlertScope.Site).ToList();
+            inherited = new();
+        }
+        else
+        {
+            own = rules.Where(r => r.Scope == AlertScope.Site && r.SiteId == SiteId).ToList();
+            inherited = rules.Where(r => r.Enabled && r.Scope is AlertScope.Global or AlertScope.Tag).ToList();
+        }
+    }
+
+    private string Target(AlertRule r) => r.Scope switch
+    {
+        AlertScope.Global => "all sites",
+        AlertScope.Tag => $"devices tagged \"{r.Tag}\"",
+        AlertScope.Site => SiteNames?.GetValueOrDefault(r.SiteId ?? Guid.Empty) ?? "this site",
+        AlertScope.Device => $"one device",
+        _ => r.Scope.ToString(),
+    };
+
+    private async Task Create()
+    {
+        error = null;
+        try
+        {
+            var scope = SiteId is null ? f.Scope : AlertScope.Site;
+            await Api.CreateRuleAsync(new RuleInput(f.Name, scope, f.ChannelId!.Value, SiteId, null, scope == AlertScope.Tag ? f.Tag : null, f.CriticalOnly, f.CooldownSec));
+            f = new();
+            await Load();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task Delete(Guid id)
+    {
+        error = null;
+        try { await Api.DeleteRuleAsync(id); await Load(); }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private sealed class Form
+    {
+        public string Name { get; set; } = ""; public AlertScope Scope { get; set; } = AlertScope.Global; public string? Tag { get; set; }
+        public Guid? ChannelId { get; set; } public bool CriticalOnly { get; set; } = true; public int CooldownSec { get; set; } = 300;
+    }
+}

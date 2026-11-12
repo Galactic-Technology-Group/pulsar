@@ -64,7 +64,7 @@ Check definitions never live on the agent; they are pushed from the API whenever
 
 ## Upgrade
 
-Tag the repository (`git tag v0.2.0 && git push origin v0.2.0`); CI builds both binaries, their `.sha256` files and the GitHub release. Then in the portal, Settings → Agent releases → **Publish from GitHub release** (leave the tag blank for the latest). The API reads the release, records it as current and pushes `UpdateAvailable` to every connected agent; agents that are offline are told at their next heartbeat. Each agent downloads the binary for its architecture (x64 or arm64, so the same release serves Pis and VMs), verifies the SHA-256, swaps `/opt/nms-agent/nms-agent` and exits so systemd restarts it on the new version. A failed download or checksum is logged and retried after an hour.
+Tag the repository (`git tag v0.2.0 && git push origin v0.2.0`); CI builds both binaries, their `.sha256` files and the GitHub release. Then in the portal, App settings → Agent releases → **Publish from GitHub release** (leave the tag blank for the latest). The API reads the release, records it as current and pushes `UpdateAvailable` to every connected agent; agents that are offline are told at their next heartbeat. Each agent downloads the binary for its architecture (x64 or arm64, so the same release serves Pis and VMs), verifies the SHA-256, swaps `/opt/nms-agent/nms-agent` and exits so systemd restarts it on the new version. A failed download or checksum is logged and retried after an hour.
 
 ### Automatic rollback
 
@@ -76,7 +76,7 @@ Since agent 0.1.7 every self-update can be undone without a site visit:
 | Confirmation | The new version confirms itself once its hub connection has held for 2 minutes, and deletes the marker. `.prev` stays for a manual rollback. |
 | Crash loop | While unconfirmed, the agent counts its own starts (3) and `nms-agent-guard.sh`, run by systemd before every start, counts launches (5). Either limit restores `.prev`. The script catches a binary that dies before reaching its own code. |
 | No connection | If the new version has not connected after 10 minutes while the API's `/healthz` answers, it restores `.prev`. When the API is unreachable too, the site's WAN is blamed instead and the check repeats every 5 minutes. |
-| After a rollback | `/var/lib/nms-agent/rollback.state` records the failed version and the reason. The agent refuses that version until a different release is published, reports the rollback in every heartbeat, and the portal shows it on the site page and under Settings → Agent releases → *Rolled back*. |
+| After a rollback | `/var/lib/nms-agent/rollback.state` records the failed version and the reason. The agent refuses that version until a different release is published, reports the rollback in every heartbeat, and the portal shows it on the site page and under App settings → Agent releases → *Rolled back*. |
 
 Two limits:
 - Protection starts with the update *from* 0.1.7: older agents do not keep `.prev`, so the update to 0.1.7 itself is not covered.

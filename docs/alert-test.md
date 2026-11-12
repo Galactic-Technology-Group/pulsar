@@ -11,10 +11,10 @@ Run it once per environment before go-live and after any change to the worker or
 
 ## Steps
 
-1. **Settings → Notification channels**: add a channel.
+1. **App settings → Notification channels**: add a channel.
    Email: name `ops-email`, type Email, value = your address (comma-separate several).
    Teams: type Teams webhook, value = the webhook URL, or `secret:<key-vault-secret-name>` to keep it out of the database.
-2. **Settings → Alert rules**: add a rule `all-sites`, scope **All sites**, channel `ops-email`, critical only **on**, cooldown `300`.
+2. **App settings → Alert rules**: add a rule `all-sites`, scope **All sites**, channel `ops-email`, critical only **on**, cooldown `300`.
 3. **Site → Add device**: name `alert-test`, address = an IP on the site LAN that nothing answers (for example the top of the subnet, `.250`), **critical** ticked. Add an **ICMP** check with the defaults (60 s interval, threshold 3).
 4. Wait. Timeline with defaults:
 

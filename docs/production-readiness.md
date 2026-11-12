@@ -11,7 +11,7 @@ infrastructure already do, what is done per environment by hand, and what is sti
 |---|---|
 | Agent transport | Outbound HTTPS/WebSocket only; per-agent secret, single-use 24 h enrolment token; re-enrols on rejected credentials when a token is configured |
 | Agent resilience | SQLite outbox replays results after an outage; hub reconnect with backoff; systemd `Restart=always` |
-| Agent updates | Portal → Settings → Agent releases → *Publish from GitHub release*; SHA-256 verified; failed version retried after 1 h; automatic rollback on crash loop or no hub connection (0.1.7+), shown in the portal |
+| Agent updates | Portal → App settings → Agent releases → *Publish from GitHub release*; SHA-256 verified; failed version retried after 1 h; automatic rollback on crash loop or no hub connection (0.1.7+), shown in the portal |
 | Alerting | Check state machine with failure threshold; agent-offline is a separate incident and suppresses device alerts; maintenance windows; email (ACS) and Teams channels; digest window; per-rule cooldown; flaps inside the digest window are never sent |
 | Portal auth | Entra ID sign-in, roles from the API; Data Protection key ring persisted to Blob storage and wrapped by a Key Vault key, so sign-in survives restarts and replicas |
 | Secrets | Key Vault only, read by the apps' managed identity; Bicep refuses to deploy without the four secret parameters |

@@ -39,7 +39,7 @@ services, and enrollment against the API.
 | 7 | Add a device on the site's LAN with an ICMP check | Check goes **Up** from the appliance (proves `cap_net_raw` on the binary) | about 1 min |
 | 8 | Log in on the console as `pulsar` with the build password | Forced password change, then a shell | |
 | 9 | `systemctl status nms-agent nms-agent-console unattended-upgrades` | all three `active` | |
-| 10 | Settings → Agent releases, publish the current release | Appliance restarts the agent and reports the new version within a minute | |
+| 10 | App settings → Agent releases, publish the current release | Appliance restarts the agent and reports the new version within a minute | |
 
 Optional:
 - Reboot the VM: the banner comes back as `enrolled`, the agent reconnects without a new code.

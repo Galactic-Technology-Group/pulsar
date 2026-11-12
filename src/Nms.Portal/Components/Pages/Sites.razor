@@ -41,7 +41,7 @@ else
                 <td>@s.Agents.Count</td>
                 <td>@s.Devices.Count</td>
                 <td>
-                    <AuthorizeView Roles="Nms.Admin"><button class="danger small" @onclick="() => Delete(s.Id)">Delete</button></AuthorizeView>
+                    <AuthorizeView Roles="Nms.Admin,Nms.Operator"><a class="small" href="sites/@s.Id/settings">Settings</a></AuthorizeView>
                 </td>
             </tr>
         }
@@ -63,7 +63,6 @@ else
         catch (ApiException ex) { error = ex.Message; }
     }
 
-    private async Task Delete(Guid id) { await Api.DeleteSiteAsync(id); sites = await Api.GetSitesAsync(); }
 
     private sealed class SiteForm { public string Name { get; set; } = ""; public string TimeZone { get; set; } = "UTC"; public VlanMode VlanMode { get; set; } public string? Address { get; set; } }
 }

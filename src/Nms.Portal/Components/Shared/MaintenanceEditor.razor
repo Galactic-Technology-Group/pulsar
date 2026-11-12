@@ -1,0 +1,73 @@
+@* Maintenance windows for one scope: a site (SiteId set) or all sites at once (SiteId null). Alerts are recorded but not
+   sent while a window is open. *@
+@inject NmsApiClient Api
+
+<section class="card">
+    <h3>Maintenance windows</h3>
+    <p class="small">
+        @(SiteId is null
+            ? "Windows here silence alerts at every site, for example during a platform-wide change. For work at one site, add the window on that site's settings page."
+            : "Incidents at this site are recorded but not sent while a window is open.")
+        Times are in your browser's time zone.
+    </p>
+    <table class="grid">
+        <thead><tr><th>Start</th><th>End</th><th>Reason</th><th></th><th></th></tr></thead>
+        <tbody>
+        @foreach (var m in windows.OrderByDescending(m => m.StartUtc))
+        {
+            <tr class="@(m.EndUtc < DateTimeOffset.UtcNow ? "muted" : "")">
+                <td>@m.StartUtc.ToLocalTime().ToString("g")</td><td>@m.EndUtc.ToLocalTime().ToString("g")</td><td>@m.Reason</td>
+                <td class="small">@Status(m)@(m.DeviceId is null ? "" : " · one device")</td>
+                <td><button class="danger small" @onclick="() => Delete(m.Id)">Delete</button></td></tr>
+        }
+        @if (windows.Count == 0) { <tr><td colspan="5" class="muted small">None.</td></tr> }
+        </tbody>
+    </table>
+    <div class="form-row">
+        <label>from <input type="datetime-local" @bind="f.Start" /></label>
+        <label>to <input type="datetime-local" @bind="f.End" /></label>
+        <input placeholder="reason" @bind="f.Reason" />
+        <button class="primary" @onclick="Create" disabled="@(f.End <= f.Start)">Add window</button>
+    </div>
+    @if (error is not null) { <p class="error">@error</p> }
+</section>
+
+@code {
+    /// <summary>The site whose windows are edited; null edits the all-sites ones.</summary>
+    [Parameter] public Guid? SiteId { get; set; }
+
+    private List<MaintenanceWindow> windows = new();
+    private Form f = new();
+    private string? error;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load() => windows = (await Api.GetMaintenanceAsync()).Where(m => m.SiteId == SiteId).ToList();
+
+    private static string Status(MaintenanceWindow m)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return m.EndUtc < now ? "ended" : m.StartUtc <= now ? "active now" : "scheduled";
+    }
+
+    private async Task Create()
+    {
+        error = null;
+        try
+        {
+            await Api.CreateMaintenanceAsync(new MaintenanceInput(SiteId, null, new DateTimeOffset(f.Start), new DateTimeOffset(f.End), f.Reason));
+            f = new();
+            await Load();
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private async Task Delete(Guid id)
+    {
+        error = null;
+        try { await Api.DeleteMaintenanceAsync(id); await Load(); }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    private sealed class Form { public DateTime Start { get; set; } = DateTime.Now; public DateTime End { get; set; } = DateTime.Now.AddHours(2); public string Reason { get; set; } = ""; }
+}

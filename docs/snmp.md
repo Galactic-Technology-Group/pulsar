@@ -8,7 +8,7 @@ through the same alert rules, digest, cooldown and maintenance windows as a chec
 
 1. **Enable SNMP on the device.** Read-only is enough; Pulsar never writes. Prefer SNMPv3 with SHA-256 (or SHA-1 on older
    cards) and AES. Allow the agent's address in the device's access list.
-2. **Add a credential** (Settings → SNMP credentials, admins). Scope it to one site or to all sites. Communities and
+2. **Add a credential** (admins): on the site's page → Site settings for that site only, or App settings for every site. Communities and
    passwords are write-only: the API never returns them, and they travel only to the agents of sites whose checks use them.
    Leave a secret blank when editing to keep the stored one.
 3. **Add an SNMP check** on the device (device page → SNMP, operators). Pick a template and a credential. The default

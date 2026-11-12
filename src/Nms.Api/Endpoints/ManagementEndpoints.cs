@@ -69,7 +69,15 @@ public static class ManagementEndpoints
             return Results.Ok(s);
         });
         admin.MapDelete("/sites/{id:guid}", async (Guid id, NmsDbContext db) =>
-            await db.Sites.Where(s => s.Id == id).ExecuteDeleteAsync() > 0 ? Results.NoContent() : Results.NotFound());
+        {
+            // Agents, devices and checks go with the site by cascade. Site-scoped settings have no foreign key to the site,
+            // so remove them too; credentials last, once the checks that used them are gone.
+            if (await db.Sites.Where(s => s.Id == id).ExecuteDeleteAsync() == 0) return Results.NotFound();
+            await db.AlertRules.Where(r => r.SiteId == id).ExecuteDeleteAsync();
+            await db.MaintenanceWindows.Where(m => m.SiteId == id).ExecuteDeleteAsync();
+            await db.SnmpCredentials.Where(c => c.SiteId == id).ExecuteDeleteAsync();
+            return Results.NoContent();
+        });
 
         // ---- Agents ----------------------------------------------------------------------------
         api.MapGet("/sites/{siteId:guid}/agents", (Guid siteId, NmsDbContext db, AgentRegistry reg) =>

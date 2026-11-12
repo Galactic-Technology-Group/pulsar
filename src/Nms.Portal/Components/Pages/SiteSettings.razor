@@ -1,0 +1,149 @@
+@page "/sites/{SiteId:guid}/settings"
+@attribute [Authorize(Roles = "Nms.Admin,Nms.Operator")]
+@inject NmsApiClient Api
+@inject NavigationManager Nav
+
+@if (site is null) { <p class="muted">Loading…</p> }
+else
+{
+    <PageTitle>@site.Name settings</PageTitle>
+    <p class="small"><a href="sites/@SiteId">← @site.Name</a></p>
+    <h1>@site.Name <small class="muted">site settings</small></h1>
+    <p class="small muted">Settings on this page apply to this site only. App-wide notification channels, rules, credentials and agent releases are under <AuthorizeView Roles="Nms.Admin"><Authorized><a href="settings">App settings</a></Authorized><NotAuthorized>App settings (administrators)</NotAuthorized></AuthorizeView>.</p>
+
+    <section class="card">
+        <h3>General</h3>
+        <div class="form-row">
+            <label>Name <input @bind="g.Name" /></label>
+            <label>Time zone <input @bind="g.TimeZone" placeholder="America/New_York" style="width:12em" /></label>
+            <label>VLAN mode
+                <select @bind="g.VlanMode">
+                    <option value="@VlanMode.Routed">Routed (single IP, via gateway)</option>
+                    <option value="@VlanMode.Trunked">Trunked (802.1Q sub-interfaces)</option>
+                </select>
+            </label>
+        </div>
+        <div class="form-row">
+            <label>Address <input @bind="g.Address" placeholder="street, city, state" style="min-width:22em" /></label>
+            <label>Latitude <input type="number" step="any" @bind="g.Latitude" style="width:9em" /></label>
+            <label>Longitude <input type="number" step="any" @bind="g.Longitude" style="width:9em" /></label>
+        </div>
+        <div class="form-row">
+            <button class="primary" @onclick="SaveGeneral" disabled="@string.IsNullOrWhiteSpace(g.Name)">Save</button>
+            @if (savedGeneral) { <span class="small muted">Saved.</span> }
+        </div>
+        <p class="small muted">Coordinates place the site on the map view; copy them from any map as decimal degrees. Changing the VLAN mode sends new settings to the site's agents.</p>
+        @if (generalError is not null) { <p class="error">@generalError</p> }
+    </section>
+
+    @if (gateway is not null)
+    {
+        <section class="card">
+            <h3>Gateway check <small class="muted">TCP reachability probed from Azure, outside the site</small></h3>
+            <div class="form-row">
+                <label>Public address <input @bind="gatewayAddress" placeholder="203.0.113.1 or site.example.com" style="min-width:18em" /></label>
+                <label>TCP port <input type="number" @bind="gatewayPort" placeholder="443" style="width:6em" /></label>
+                <button class="primary" @onclick="SaveGateway" disabled="@(gatewayPort is null || gatewayAddress == gateway.Address && gatewayPort == GatewayCheck?.Port)">Save</button>
+            </div>
+            <p class="small muted">When the site's agent goes offline, this check tells a dead line from a dead agent. Azure cannot ping outward, so the worker opens a TCP connection instead: a reply or a refusal both count as reachable, silence does not. Pick a port the gateway answers on from the internet (HTTPS admin, SSL-VPN, SSH).</p>
+            @if (gatewayError is not null) { <p class="error">@gatewayError</p> }
+        </section>
+    }
+
+    <SnmpCredentialsEditor SiteId="SiteId" />
+
+    <AuthorizeView Roles="Nms.Admin">
+        <Authorized><AlertRulesEditor SiteId="SiteId" /></Authorized>
+        <NotAuthorized>
+            <section class="card"><h3>Alert rules</h3><p class="small muted">Only administrators can see and change where this site's alerts go.</p></section>
+        </NotAuthorized>
+    </AuthorizeView>
+
+    <MaintenanceEditor SiteId="SiteId" />
+
+    <AuthorizeView Roles="Nms.Admin">
+        <section class="card">
+            <h3>Delete site</h3>
+            <p class="small">Removes the site with its agents, devices, checks, and this page's credentials, alert rules and maintenance windows. The agents can no longer connect. This cannot be undone.</p>
+            @if (!confirmDelete) { <button class="danger" @onclick="() => confirmDelete = true">Delete site…</button> }
+            else
+            {
+                <div class="form-row">
+                    <label>Type the site name to confirm <input @bind="deleteName" @bind:event="oninput" /></label>
+                    <button class="danger" @onclick="DeleteSite" disabled="@(deleteName != site.Name)">Delete @site.Name</button>
+                    <button class="small" @onclick="() => { confirmDelete = false; deleteName = string.Empty; }">Cancel</button>
+                </div>
+            }
+        </section>
+    </AuthorizeView>
+}
+
+@code {
+    [Parameter] public Guid SiteId { get; set; }
+
+    private Site? site;
+    private GeneralForm g = new();
+    private bool savedGeneral;
+    private string? generalError;
+    private Device? gateway;
+    private string gatewayAddress = "";
+    private int? gatewayPort;
+    private string? gatewayError;
+    private bool confirmDelete;
+    private string deleteName = "";
+
+    private Check? GatewayCheck => gateway?.Checks.FirstOrDefault(c => c.Type == CheckType.GatewayPing);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        site = await Api.GetSiteAsync(SiteId);
+        if (site is null) { Nav.NavigateTo("sites"); return; }
+        g = new GeneralForm { Name = site.Name, TimeZone = site.TimeZone, VlanMode = site.VlanMode, Address = site.Address, Latitude = site.Latitude, Longitude = site.Longitude };
+        await LoadGateway();
+    }
+
+    private async Task LoadGateway()
+    {
+        gateway = (await Api.GetDevicesAsync(SiteId)).FirstOrDefault(d => d.Kind == DeviceKind.Gateway);
+        gatewayAddress = gateway?.Address ?? "";
+        gatewayPort = GatewayCheck?.Port;
+    }
+
+    private async Task SaveGeneral()
+    {
+        generalError = null; savedGeneral = false;
+        try
+        {
+            site = await Api.UpdateSiteAsync(SiteId, new SiteInput(g.Name.Trim(), string.IsNullOrWhiteSpace(g.TimeZone) ? "UTC" : g.TimeZone.Trim(), g.VlanMode, g.Address, g.Latitude, g.Longitude));
+            savedGeneral = true;
+        }
+        catch (Exception ex) { generalError = ex.Message; }
+    }
+
+    private async Task SaveGateway()
+    {
+        if (gateway is null) return;
+        gatewayError = null;
+        try
+        {
+            await Api.UpdateDeviceAsync(gateway.Id, new DeviceInput(gateway.Name, gatewayAddress.Trim(), null, gateway.IsCritical, gateway.Tags, gateway.Notes, gateway.MacAddress));
+            if (GatewayCheck is { } gc && gc.Port != gatewayPort)
+                await Api.UpdateCheckAsync(gc.Id, new CheckInput(CheckType.GatewayPing, gatewayPort, null, null, null, gc.IntervalSec, gc.TimeoutMs, gc.FailureThreshold, gc.Enabled));
+            await LoadGateway();
+        }
+        catch (Exception ex) { gatewayError = ex.Message; }
+    }
+
+    private async Task DeleteSite()
+    {
+        if (site is null || deleteName != site.Name) return;
+        await Api.DeleteSiteAsync(SiteId);
+        Nav.NavigateTo("sites");
+    }
+
+    private sealed class GeneralForm
+    {
+        public string Name { get; set; } = ""; public string TimeZone { get; set; } = "UTC"; public VlanMode VlanMode { get; set; }
+        public string? Address { get; set; } public double? Latitude { get; set; } public double? Longitude { get; set; }
+    }
+}
