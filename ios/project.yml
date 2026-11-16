@@ -1,0 +1,62 @@
+# XcodeGen spec: `brew install xcodegen && xcodegen` in this folder writes Pulsar.xcodeproj (not committed).
+name: Pulsar
+options:
+  bundleIdPrefix: company.galactic
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+configFiles:
+  Debug: Config/Pulsar.xcconfig
+  Release: Config/Pulsar.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Pulsar:
+    type: application
+    platform: iOS
+    sources:
+      - Pulsar
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: company.galactic.pulsar
+        PRODUCT_NAME: Pulsar
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    info:
+      path: Pulsar/Info.plist
+      properties:
+        CFBundleDisplayName: Pulsar
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        ITSAppUsesNonExemptEncryption: false
+        # Sign-in returns to the app on this URL scheme; it must match the redirect URI on the Entra app registration.
+        CFBundleURLTypes:
+          - CFBundleURLName: auth
+            CFBundleURLSchemes:
+              - msauth.$(PRODUCT_BUNDLE_IDENTIFIER)
+        # Filled from Config/Pulsar.xcconfig at build time, read by AppConfig.swift.
+        PulsarApiBaseUrl: $(PULSAR_API_BASE_URL)
+        PulsarTenantId: $(PULSAR_TENANT_ID)
+        PulsarClientId: $(PULSAR_IOS_CLIENT_ID)
+        PulsarApiClientId: $(PULSAR_API_CLIENT_ID)
+schemes:
+  Pulsar:
+    build:
+      targets:
+        Pulsar: all
+    run:
+      config: Debug

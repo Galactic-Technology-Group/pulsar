@@ -1,0 +1,33 @@
+name: iOS
+
+# Compiles the iOS app for the simulator. No signing and no upload: it only proves the Swift sources build.
+on:
+  push:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  pull_request:
+    paths: ["ios/**", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate the Xcode project
+        run: xcodegen generate
+      - name: Build for the iOS simulator
+        run: |
+          xcodebuild -version
+          set -o pipefail
+          xcodebuild -project Pulsar.xcodeproj -scheme Pulsar -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | grep -E "error:|warning:|BUILD|\*\*" || true
+          # grep hides xcodebuild's status, so build once more quietly for the real exit code (incremental, fast).
+          xcodebuild -project Pulsar.xcodeproj -scheme Pulsar -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build -quiet

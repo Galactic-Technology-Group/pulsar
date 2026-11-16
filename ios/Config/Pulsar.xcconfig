@@ -1,0 +1,17 @@
+// Environment for the Pulsar iOS app. None of these values is a secret: the app is a public OAuth client and signs
+// users in with their own Entra accounts. To keep your own values out of git, put them in Config/Local.xcconfig
+// (ignored); it is included last and overrides the lines below.
+
+// "//" starts a comment in xcconfig files, so the URL is written with $() between the slashes.
+PULSAR_API_BASE_URL = https:/$()/ca-nms-dev-api.whitestone-166145fb.eastus.azurecontainerapps.io
+
+// Entra directory (tenant) ID.
+PULSAR_TENANT_ID = 00000000-0000-0000-0000-000000000000
+
+// Application (client) ID of the iOS app registration (docs/ios-app.md).
+PULSAR_IOS_CLIENT_ID = 00000000-0000-0000-0000-000000000000
+
+// Application (client) ID of the Pulsar API registration; the app asks for api://<this>/access_as_user.
+PULSAR_API_CLIENT_ID = 00000000-0000-0000-0000-000000000000
+
+#include? "Local.xcconfig"

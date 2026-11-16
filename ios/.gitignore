@@ -1,0 +1,7 @@
+*.xcodeproj
+Pulsar/Info.plist
+Config/Local.xcconfig
+build/
+DerivedData/
+xcuserdata/
+.DS_Store

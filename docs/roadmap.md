@@ -140,6 +140,8 @@ with the gateway verdict, its recovery, and no device flood.
 
 **Pulsar for iOS: status companion (read-only)**
 
+**Started** (2026-11-16, `ios/`, `docs/ios-app.md`): sign-in, site roll-up, site, device and check screens with latency and SNMP history charts, incident feed with acknowledge. Still to do from the list below: push, Face ID, widgets, offline cache, global search by MAC/serial.
+
 - Native SwiftUI, iOS 17+; Entra sign-in against the existing API app registration; Face ID unlock.
 - Site list with red/amber/green roll-up → device list → device detail (status, last seen, RTT, key SNMP metrics, 24 h sparkline). The dashboard and device endpoints already return this.
 - Push via APNs honouring alert profiles and maintenance windows; acknowledge and snooze from the notification. Needs a notification channel type `Push` in the worker and a device-token registry in the API.
