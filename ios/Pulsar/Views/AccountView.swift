@@ -20,6 +20,7 @@ struct AccountView: View {
                         }
                     }
                 }
+                NotificationsSection()
                 Section("Server") {
                     LabeledContent("Address", value: model.config.apiBaseURL.host ?? model.config.apiBaseURL.absoluteString)
                 }
@@ -35,7 +36,7 @@ struct AccountView: View {
             }
             .navigationTitle("Account")
             .confirmationDialog("Sign out of Pulsar on this device?", isPresented: $confirmSignOut, titleVisibility: .visible) {
-                Button("Sign out", role: .destructive) { model.auth.signOut() }
+                Button("Sign out", role: .destructive) { Task { await model.signOut() } }
             }
         }
     }
@@ -43,5 +44,40 @@ struct AccountView: View {
     private var version: String {
         let info = Bundle.main.infoDictionary
         return "\(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))"
+    }
+}
+
+private struct NotificationsSection: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        let push = model.push
+        Section {
+            switch push.status {
+            case .on:
+                Label(push.registered ? "On for this phone" : "On, registering this phone…", systemImage: "bell.badge")
+                Button("Turn off on this phone", role: .destructive) { Task { await model.turnOffNotifications() } }
+            case .denied:
+                Label("Blocked in iOS Settings", systemImage: "bell.slash")
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                }
+            case .off, .unknown:
+                Button {
+                    Task { await push.enable() }
+                } label: {
+                    Label("Turn on notifications", systemImage: "bell")
+                }
+            }
+            if let error = push.lastError {
+                Text(error).font(.footnote).foregroundStyle(.red)
+            }
+        } header: {
+            Text("Notifications")
+        } footer: {
+            Text("Outages and recoveries arrive as notifications when an administrator has pointed an alert rule at the Phone push channel in the web portal.")
+        }
+        .task { await push.refresh() }
     }
 }

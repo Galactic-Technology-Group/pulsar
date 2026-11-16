@@ -58,6 +58,13 @@ param portalClientId string
 @minLength(8)
 param portalClientSecret string
 
+@description('Apple push (iOS app): key ID of the APNs auth key. Leave empty to deploy without push.')
+param apnsKeyId string = ''
+@description('Apple push: Apple Developer team ID.')
+param apnsTeamId string = ''
+@description('Apple push: bundle identifier of the iOS app.')
+param apnsBundleId string = 'company.galactic.pulsar'
+
 @description('Data location for Azure Communication Services (e.g. United States, Europe).')
 param acsDataLocation string = 'United States'
 
@@ -265,15 +272,24 @@ module worker 'modules/containerapp.bicep' = {
     ingressEnabled: false
     minReplicas: 1
     maxReplicas: 1
-    secrets: [
+    // The APNs key (.p8) is not a deployment parameter: store it once as Key Vault secret "apns-key"
+    // (docs/ios-app.md). It is referenced only when apnsKeyId is set, so deployments without push still work.
+    secrets: concat([
       { name: 'pg-connection', keyVaultUrl: '${kvUri}secrets/pg-connection', identity: identity.id }
       { name: 'acs-connection', keyVaultUrl: '${kvUri}secrets/acs-connection', identity: identity.id }
-    ]
+    ], empty(apnsKeyId) ? [] : [
+      { name: 'apns-key', keyVaultUrl: '${kvUri}secrets/apns-key', identity: identity.id }
+    ])
     env: concat(commonEnv, [
       { name: 'ConnectionStrings__Nms', secretRef: 'pg-connection' }
       { name: 'Email__ConnectionString', secretRef: 'acs-connection' }
       { name: 'Email__From', value: 'DoNotReply@${acs.outputs.mailFromDomain}' }
       { name: 'Worker__PortalBaseUrl', value: 'https://${portal.outputs.fqdn}' }
+    ], empty(apnsKeyId) ? [] : [
+      { name: 'Apns__KeyId', value: apnsKeyId }
+      { name: 'Apns__TeamId', value: apnsTeamId }
+      { name: 'Apns__BundleId', value: apnsBundleId }
+      { name: 'Apns__PrivateKey', secretRef: 'apns-key' }
     ])
   }
 }

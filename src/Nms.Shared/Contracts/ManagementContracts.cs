@@ -21,6 +21,10 @@ public sealed record MetricPoint(DateTimeOffset Time, double Value, double? Min 
 public sealed record ChannelInput(string Name, NotificationChannelType Type, string ConfigJson, bool Enabled = true);
 public sealed record RuleInput(string Name, AlertScope Scope, Guid ChannelId, Guid? SiteId = null, Guid? DeviceId = null, string? Tag = null, bool CriticalOnly = true, int CooldownSec = 300, bool Enabled = true);
 public sealed record MaintenanceInput(Guid? SiteId, Guid? DeviceId, DateTimeOffset StartUtc, DateTimeOffset EndUtc, string Reason);
+/// <summary>A phone registering for push. <c>Environment</c> is "sandbox" for Xcode debug builds, "production" for TestFlight and App Store builds.</summary>
+public sealed record PushDeviceInput(string Token, string Environment = "production", string? DeviceName = null);
+/// <summary>A registered phone as administrators see it; the token itself is never returned.</summary>
+public sealed record PushDeviceView(Guid Id, string UserName, string? DeviceName, string Environment, DateTimeOffset CreatedUtc, DateTimeOffset LastSeenUtc);
 public sealed record ReleaseInput(string Version, string DownloadUrlX64, string DownloadUrlArm64, string Sha256X64, string Sha256Arm64, bool IsCurrent = true);
 /// <summary>Publish a CI-built GitHub release; <c>Tag</c> null means the latest release.</summary>
 public sealed record ReleaseImportRequest(string? Tag);

@@ -329,6 +329,7 @@ public static class ManagementEndpoints
         admin.MapGet("/releases/source", (GitHubReleaseSource github) => Results.Ok(new { github.Repo }));
 
         SnmpEndpoints.Map(api, write, admin);
+        PushEndpoints.Map(api, admin);
 
         return app;
     }

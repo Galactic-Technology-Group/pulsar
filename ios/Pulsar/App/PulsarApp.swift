@@ -1,5 +1,6 @@
 import Observation
 import SwiftUI
+import UIKit
 
 /// App-wide state: the signed-in session, the API client, and small lookups several screens share.
 @MainActor
@@ -8,6 +9,7 @@ final class AppModel {
     let config: AppConfig
     let auth: AuthService
     let api: ApiClient
+    let push = PushManager.shared
 
     /// Open incidents across all sites, shown as the badge on the Incidents tab.
     var openIncidents = 0
@@ -18,6 +20,19 @@ final class AppModel {
         config = AppConfig.load()
         auth = AuthService(config: config)
         api = ApiClient(baseURL: config.apiBaseURL, auth: auth)
+        push.upload = { [api] token in
+            try await api.registerPush(token: token, environment: PushManager.environment, deviceName: UIDevice.current.name)
+        }
+    }
+
+    /// Stop alerts to this phone before the session goes away; without a token the server could not be told.
+    func signOut() async {
+        if let token = push.token { try? await api.unregisterPush(token: token) }
+        auth.signOut()
+    }
+
+    func turnOffNotifications() async {
+        if let token = push.disable() { try? await api.unregisterPush(token: token) }
     }
 
     func noteSites(_ sites: [SiteSummary]) {
@@ -34,6 +49,7 @@ final class AppModel {
 
 @main
 struct PulsarApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model = AppModel()
 
     var body: some Scene {
@@ -63,16 +79,32 @@ struct RootView: View {
 
 struct MainTabs: View {
     @Environment(AppModel.self) private var model
+    @State private var tab = Tab.sites
+
+    enum Tab { case sites, incidents, account }
 
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             DashboardView()
                 .tabItem { Label("Sites", systemImage: "building.2") }
+                .tag(Tab.sites)
             IncidentsView()
                 .tabItem { Label("Incidents", systemImage: "exclamationmark.triangle") }
                 .badge(model.openIncidents)
+                .tag(Tab.incidents)
             AccountView()
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
+                .tag(Tab.account)
         }
+        .task { await model.push.refresh() }
+        .onAppear { showIncidentsIfAsked() }
+        .onChange(of: model.push.openIncidents) { _, _ in showIncidentsIfAsked() }
+    }
+
+    /// A tapped notification opens the incident list.
+    private func showIncidentsIfAsked() {
+        guard model.push.openIncidents else { return }
+        tab = .incidents
+        model.push.openIncidents = false
     }
 }

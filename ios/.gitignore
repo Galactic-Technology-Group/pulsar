@@ -1,5 +1,6 @@
 *.xcodeproj
 Pulsar/Info.plist
+Pulsar/Pulsar.entitlements
 Config/Local.xcconfig
 build/
 DerivedData/

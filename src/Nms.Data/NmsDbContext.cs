@@ -21,6 +21,7 @@ public class NmsDbContext(DbContextOptions<NmsDbContext> options) : DbContext(op
     public DbSet<SnmpCredential> SnmpCredentials => Set<SnmpCredential>();
     public DbSet<MetricThreshold> MetricThresholds => Set<MetricThreshold>();
     public DbSet<MetricSample> MetricSamples => Set<MetricSample>();
+    public DbSet<PushDevice> PushDevices => Set<PushDevice>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -110,6 +111,16 @@ public class NmsDbContext(DbContextOptions<NmsDbContext> options) : DbContext(op
         b.Entity<MaintenanceWindow>(e => e.HasIndex(x => new { x.StartUtc, x.EndUtc }));
 
         b.Entity<AgentRelease>(e => e.HasIndex(x => x.Version).IsUnique());
+
+        b.Entity<PushDevice>(e =>
+        {
+            e.HasIndex(x => x.Token).IsUnique();
+            e.Property(x => x.Token).HasMaxLength(200);
+            e.Property(x => x.Environment).HasMaxLength(16);
+            e.Property(x => x.UserId).HasMaxLength(64);
+            e.Property(x => x.UserName).HasMaxLength(256);
+            e.Property(x => x.DeviceName).HasMaxLength(128);
+        });
 
         b.Entity<AuditEvent>(e =>
         {

@@ -73,6 +73,12 @@ final class ApiClient {
 
     func snmpTemplates() async throws -> [SnmpTemplate] { try await get("api/snmp/templates") }
 
+    func registerPush(token: String, environment: String, deviceName: String) async throws {
+        try await send("POST", "api/push/devices", body: ["token": token, "environment": environment, "deviceName": deviceName])
+    }
+
+    func unregisterPush(token: String) async throws { try await send("DELETE", "api/push/devices/by-token/\(token)") }
+
     // MARK: Transport
 
     private func range(hours: Int) -> [URLQueryItem] {
@@ -86,9 +92,11 @@ final class ApiClient {
         catch { throw ApiError.decoding(String(describing: error)) }
     }
 
-    private func send(_ method: String, _ path: String) async throws { _ = try await request(method, path, query: []) }
+    private func send(_ method: String, _ path: String, body: [String: String]? = nil) async throws {
+        _ = try await request(method, path, query: [], body: try body.map { try JSONEncoder().encode($0) })
+    }
 
-    private func request(_ method: String, _ path: String, query: [URLQueryItem]) async throws -> Data {
+    private func request(_ method: String, _ path: String, query: [URLQueryItem], body: Data? = nil) async throws -> Data {
         var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty {
             components.queryItems = query
@@ -98,6 +106,10 @@ final class ApiClient {
         var request = URLRequest(url: components.url!)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let body {
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
 
         // A 401 with a token we believed valid gets one retry with a freshly issued token.
         for attempt in 0..<2 {

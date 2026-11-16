@@ -123,6 +123,8 @@ public sealed class AuditFilter(IServiceScopeFactory scopes, ILogger<AuditFilter
                 return (m?.SiteId, m is null ? null : $"maintenance {m.Reason}");
             case "channels":
                 return (null, await db.NotificationChannels.Where(x => x.Id == key).Select(x => "channel " + x.Name).FirstOrDefaultAsync(ct));
+            case "push":
+                return (null, await db.PushDevices.Where(x => x.Id == key).Select(x => "phone of " + x.UserName).FirstOrDefaultAsync(ct));
             case "snmp":
                 return (null, await db.SnmpCredentials.Where(x => x.Id == key).Select(x => "SNMP credential " + x.Name).FirstOrDefaultAsync(ct));
             case "thresholds":

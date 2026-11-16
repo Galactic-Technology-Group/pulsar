@@ -279,3 +279,22 @@ public class AuditEvent
     /// <summary>Human-readable target, captured before the change ("device core-sw (10.0.0.2)").</summary>
     public string? Detail { get; set; }
 }
+
+/// <summary>
+/// A phone that asked for push notifications. One row per APNs device token; the token changes when the app is
+/// reinstalled, and rows whose token Apple rejects are removed by the worker.
+/// </summary>
+public class PushDevice
+{
+    public Guid Id { get; set; }
+    /// <summary>APNs device token, lowercase hex.</summary>
+    public string Token { get; set; } = "";
+    /// <summary>"sandbox" or "production": which APNs host accepts this token.</summary>
+    public string Environment { get; set; } = "production";
+    /// <summary>Entra object id of the user who registered it.</summary>
+    public string? UserId { get; set; }
+    public string UserName { get; set; } = "";
+    public string? DeviceName { get; set; }
+    public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset LastSeenUtc { get; set; } = DateTimeOffset.UtcNow;
+}

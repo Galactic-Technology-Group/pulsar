@@ -11,7 +11,7 @@ configFiles:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.2.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
   Pulsar:
@@ -26,6 +26,11 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    # Push notifications. Xcode switches this to "production" itself when it exports a TestFlight or App Store build.
+    entitlements:
+      path: Pulsar/Pulsar.entitlements
+      properties:
+        aps-environment: development
     info:
       path: Pulsar/Info.plist
       properties:

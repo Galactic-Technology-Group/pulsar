@@ -14,7 +14,7 @@ public enum AgentStatus { PendingEnrollment = 0, Online = 1, Offline = 2, Revoke
 /// <summary>Threshold: an SNMP reading crossed a limit set on its check (on battery, temperature high).</summary>
 public enum IncidentKind { CheckDown = 0, AgentOffline = 1, GatewayDown = 2, Threshold = 3 }
 
-public enum NotificationChannelType { Email = 0, TeamsWebhook = 1 }
+public enum NotificationChannelType { Email = 0, TeamsWebhook = 1, Push = 2 }
 
 public enum AlertScope { Global = 0, Site = 1, Tag = 2, Device = 3 }
 

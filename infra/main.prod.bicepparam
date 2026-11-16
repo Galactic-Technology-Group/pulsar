@@ -19,3 +19,7 @@ param apiClientId = readEnvironmentVariable('NMS_API_CLIENT_ID')
 param portalClientId = readEnvironmentVariable('NMS_PORTAL_CLIENT_ID')
 param portalClientSecret = readEnvironmentVariable('NMS_PORTAL_CLIENT_SECRET')
 param acsDataLocation = 'United States'
+// Apple push for the iOS app. Optional: with these unset the worker is deployed without push. When set, Key Vault
+// must already hold the .p8 key as secret "apns-key" (docs/ios-app.md).
+param apnsKeyId = readEnvironmentVariable('NMS_APNS_KEY_ID', '')
+param apnsTeamId = readEnvironmentVariable('NMS_APNS_TEAM_ID', '')

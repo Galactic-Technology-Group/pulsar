@@ -29,7 +29,7 @@
         <tbody>
         @foreach (var c in channels)
         {
-            <tr><td>@c.Name</td><td>@c.Type</td><td><code class="small">@Mask(c.ConfigJson)</code></td><td>@(c.Enabled ? "yes" : "no")</td>
+            <tr><td>@c.Name</td><td>@c.Type</td><td>@if (c.Type == NotificationChannelType.Push) { <span class="small">every registered phone (@phones.Count)</span> } else { <code class="small">@Mask(c.ConfigJson)</code> }</td><td>@(c.Enabled ? "yes" : "no")</td>
                 <td><button class="danger small" @onclick="() => DeleteChannel(c.Id)">Delete</button></td></tr>
         }
         </tbody>
@@ -39,10 +39,39 @@
         <select @bind="ch.Type">
             <option value="@NotificationChannelType.Email">Email</option>
             <option value="@NotificationChannelType.TeamsWebhook">Teams webhook</option>
+            <option value="@NotificationChannelType.Push">Phone push (iOS app)</option>
         </select>
-        <input placeholder="@(ch.Type == NotificationChannelType.Email ? "ops@example.com, noc@example.com" : "https://... webhook URL  or  secret:teams-webhook-ops")" @bind="ch.Value" style="min-width:28em" />
-        <button class="primary" @onclick="CreateChannel" disabled="@(string.IsNullOrWhiteSpace(ch.Name) || string.IsNullOrWhiteSpace(ch.Value))">Add channel</button>
+        @if (ch.Type == NotificationChannelType.Push)
+        {
+            <span class="small muted">Sends to every phone signed in to the iOS app with notifications on. Nothing else to set.</span>
+        }
+        else
+        {
+            <input placeholder="@(ch.Type == NotificationChannelType.Email ? "ops@example.com, noc@example.com" : "https://... webhook URL  or  secret:teams-webhook-ops")" @bind="ch.Value" style="min-width:28em" />
+        }
+        <button class="primary" @onclick="CreateChannel" disabled="@(string.IsNullOrWhiteSpace(ch.Name) || ch.Type != NotificationChannelType.Push && string.IsNullOrWhiteSpace(ch.Value))">Add channel</button>
     </div>
+    <p class="small muted">A channel only receives alerts once an alert rule points at it.</p>
+
+    <h4>Phones registered for push</h4>
+    @if (phones.Count == 0)
+    {
+        <p class="small muted">None yet. A phone appears here after its user signs in to the Pulsar iOS app and turns notifications on (Account tab). Push also needs the Apple push key set on the worker; see docs/ios-app.md.</p>
+    }
+    else
+    {
+        <table class="grid">
+            <thead><tr><th>User</th><th>Phone</th><th>Build</th><th>Registered</th><th>Last opened</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var p in phones)
+            {
+                <tr><td>@p.UserName</td><td>@p.DeviceName</td><td class="small">@(p.Environment == "sandbox" ? "development" : "release")</td>
+                    <td>@p.CreatedUtc.ToLocalTime().ToString("g")</td><td>@p.LastSeenUtc.ToLocalTime().ToString("g")</td>
+                    <td><button class="danger small" @onclick="() => DeletePhone(p.Id)">Remove</button></td></tr>
+            }
+            </tbody>
+        </table>
+    }
 </section>
 
 <AlertRulesEditor SiteNames="siteNames" @key="channelsVersion" />
@@ -79,6 +108,7 @@
 @code {
     private List<NotificationChannel> channels = new();
     private List<AgentRelease> releases = new();
+    private List<PushDeviceView> phones = new();
     private Dictionary<Guid, string> siteNames = new();
     private Dictionary<Guid, int> siteCreds = new(), siteRules = new(), siteWindows = new();
     private int channelsVersion;   // re-creates the rules editor so its channel list follows changes made here
@@ -95,7 +125,7 @@
     }
     private async Task Load()
     {
-        channels = await Api.GetChannelsAsync(); releases = await Api.GetReleasesAsync();
+        channels = await Api.GetChannelsAsync(); releases = await Api.GetReleasesAsync(); phones = await Api.GetPushDevicesAsync();
         siteCreds = Count((await Api.GetSnmpCredentialsAsync()).Select(c => c.SiteId));
         siteRules = Count((await Api.GetRulesAsync()).Where(r => r.Scope == AlertScope.Site).Select(r => r.SiteId));
         siteWindows = Count((await Api.GetMaintenanceAsync()).Where(m => m.EndUtc > DateTimeOffset.UtcNow).Select(m => m.SiteId));
@@ -107,11 +137,12 @@
 
     private Task CreateChannel() => Guard(async () =>
     {
-        var json = ch.Type == NotificationChannelType.Email
+        var json = ch.Type == NotificationChannelType.Push ? "{}" : ch.Type == NotificationChannelType.Email
             ? System.Text.Json.JsonSerializer.Serialize(new { to = ch.Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) })
             : ch.Value.StartsWith("secret:") ? System.Text.Json.JsonSerializer.Serialize(new { secretName = ch.Value[7..] }) : System.Text.Json.JsonSerializer.Serialize(new { url = ch.Value });
         await Api.CreateChannelAsync(new ChannelInput(ch.Name, ch.Type, json)); ch = new(); channelsVersion++;
     });
+    private Task DeletePhone(Guid id) => Guard(() => Api.DeletePushDeviceAsync(id));
     private Task DeleteChannel(Guid id) => Guard(async () => { await Api.DeleteChannelAsync(id); channelsVersion++; });
     private Task CreateRelease() => Guard(async () => { await Api.CreateReleaseAsync(new ReleaseInput(rel.Version, rel.DownloadUrlX64, rel.DownloadUrlArm64, rel.Sha256X64, rel.Sha256Arm64)); rel = new(); });
     private async Task ImportRelease()
